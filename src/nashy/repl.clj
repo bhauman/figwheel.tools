@@ -1,0 +1,108 @@
+(ns nashy.repl
+  (:require
+   [nashy.output-capture :refer [print-writer]]
+   [cljs.repl]
+   [cljs.analyzer]
+   [clojure.java.io :as io]
+   [cljs.repl.nashorn :as nash]
+   [figwheel-sidecar.repl-api :as f])
+  (:import
+   [nashy ReaderHelper]))
+
+(defn handle-warnings-and-output-eval [out err warning-handler]
+  (fn evaler*
+    ([repl-env env form]
+     (evaler* repl-env env form cljs.repl/*repl-opts*))
+    ([repl-env env form opts]
+     (binding [cljs.analyzer/*cljs-warning-handlers*
+               [(warning-handler repl-env form opts)]
+               *out* out
+               *err* err]
+       (#'cljs.repl/eval-cljs repl-env env form opts)))))
+
+(defn thread-cljs-repl [repl-env handler]
+  (let [writer-reader (ReaderHelper.)
+        out (print-writer :out handler)
+        err (print-writer :err handler)
+        flush-out (fn [] (.flush err) (.flush out))]
+    {:repl-thread
+     (let [t (Thread.
+              (binding [*in* writer-reader]
+                (bound-fn []
+                  (cljs.repl/repl*
+                   repl-env
+                   {:need-prompt (constantly false)
+                    :init (fn [])
+                    :prompt (fn [])
+                    :bind-err false
+                    :quit-prompt (fn [])
+                    :flush flush-out
+                    :eval (handle-warnings-and-output-eval out err
+                           (fn [repl-env form opts]
+                             (fn [warning-type env extra]
+                               (handler
+                                {:type :eval-warning
+                                 :form form
+                                 :warning-type warning-type
+                                 :env (select-keys env [:context :locals :ns :root-source-info :def-emits-var :line :column])
+                                 :extra extra}))))
+                    :print
+                    (fn [result & rest]
+                      (flush-out)
+                      (handler {:type :eval-value
+                                :value (or result "nil")
+                                :printed-value 1
+                                :ns cljs.analyzer/*cljs-ns*}))
+                    :caught
+                    (fn [err repl-env repl-options]
+                      (let [root-ex (#'clojure.main/root-cause err)]
+                        (when-not (instance? ThreadDeath root-ex)
+                          (handler {:type :eval-error
+                                    :orig-exception err}))))})
+                  (.close writer-reader))))]
+       (.start t)
+       t)
+     :writer-reader writer-reader}))
+
+(defn repl-running? [{:keys [writer-reader]}]
+  (not @(:closed (.state writer-reader))))
+
+(defn repl-eval [thread-repl s]
+  (.write (:writer-reader thread-repl) (str s "\n")))
+
+(defn kill-repl [thread-repl]
+  ;; this will close the repl
+  (.close (:writer-reader thread-repl))
+  (.join (:repl-thread thread-repl) 2000)
+  (.stop (:repl-thread thread-repl)))
+
+
+
+
+(comment
+  
+  (prn (.state (:writer-reader repler)))
+  
+  (f/start-figwheel!)
+  (f/stop-figwheel!)
+
+  (def output (atom []))
+
+  (def repler (thread-cljs-repl (f/repl-env) #(swap! output conj %)))
+  (def repler (thread-cljs-repl (nash/repl-env) #(swap! output conj %)))
+
+  (repl-eval repler "       \n     \n")
+  (repl-eval repler "(list 1 2 3)")
+  (repl-eval repler "(list ")
+  (repl-eval repler " 1 2) ")
+
+  (repl-eval repler "(+ 1 2)")
+
+  (do (repl-eval repler "(prn {:asdf 1})")
+      (clojure.pprint/pprint @output))
+  
+  
+  (repl-eval repler ":cljs/quit")
+  (repl-running? repler)
+  (kill-repl repler)
+  )
