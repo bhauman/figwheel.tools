@@ -5,9 +5,22 @@
    [cljs.analyzer]
    [clojure.java.io :as io]
    [cljs.repl.nashorn :as nash]
+   [cljs.analyzer]
    [figwheel-sidecar.repl-api :as f])
   (:import
    [nashy ReaderHelper]))
+
+(defn extract-warning-data [warning-type env extra]
+  (when (warning-type cljs.analyzer/*cljs-warnings*)
+    (when-let [s (cljs.analyzer/error-message warning-type extra)]
+      {:line   (:line env)
+       :column (:column env)
+       :ns     (-> env :ns :name)
+       :file (if (= (-> env :ns :name) 'cljs.core)
+               "cljs/core.cljs"
+               cljs.analyzer/*cljs-file*)
+       :message s
+       :extra   extra})))
 
 (defn handle-warnings-and-output-eval [out err warning-handler]
   (fn evaler*
@@ -47,11 +60,10 @@
                            (fn [repl-env form opts]
                              (fn [warning-type env extra]
                                (handler
-                                {:type ::eval-warning
-                                 :form form
-                                 :warning-type warning-type
-                                 :env (select-keys env [:context :locals :ns :root-source-info :def-emits-var :line :column])
-                                 :extra extra}))))
+                                (merge
+                                 {:form form
+                                  :type ::eval-warning}
+                                 (extract-warning-data warning-type env extra))))))
                     :print
                     (fn [result & rest]
                       (flush-out)
@@ -64,7 +76,7 @@
                       (let [root-ex (#'clojure.main/root-cause err)]
                         (when-not (instance? ThreadDeath root-ex)
                           (handler {:type ::eval-error
-                                    :orig-exception err}))))})
+                                    :exception err}))))})
                   (.close writer-reader))))]
        (.start t)
        t)

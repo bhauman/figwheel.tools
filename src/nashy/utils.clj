@@ -3,6 +3,13 @@
    [clojure.tools.reader :as r]
    [clojure.tools.reader.reader-types :as rtyp]))
 
+(defn line-column-str [{:keys [line column]}]
+  (->> (cond-> []
+         line   (conj (str "line " line))
+         column (conj (str "column " column)))
+       (interpose ", ")
+       (string/join "")))
+
 (defn read-identity [tag form]
   [::reader-tag tag form])
 

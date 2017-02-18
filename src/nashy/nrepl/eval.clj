@@ -17,33 +17,47 @@
 
 (defmethod process-eval-out-message :nashy.repl/eval-value [state {:keys [value] :as msg}]
   (-> (select-keys msg [::nrepl-message])
-      (assoc ::send (merge
+      (assoc ::send [(merge
                      (select-keys (::parsed-form msg)
                                   [:source :line :column :end-line :end-column])
-                     (select-keys msg [:value :printed-value :ns])))))
+                     (select-keys msg [:value :printed-value :ns]))])))
 
 (defmethod process-eval-out-message ::done [state {:keys [value] :as msg}]
   (-> (select-keys msg [::nrepl-message])
-      (assoc ::send {:status "done"})))
+      (assoc ::send [{:status :done}])))
 
 (defmethod process-eval-out-message :nashy.output-capture/output
   [state {:keys [::nrepl-message channel text]}]
-  {::send {channel text}
+  {::send [{channel text}]
+   ::nrepl-message nrepl-message})
+
+(defmethod process-eval-out-message ::read-exception [state {:keys [::nrepl-message exception]}]
+  {::send [{:status :eval-error
+            :ex (-> exception class str)
+            :root-ex (-> (#'clojure.main/root-cause exception) class str)}
+           {:err (.getMessage exception)}]
    ::nrepl-message nrepl-message})
 
 (defmethod process-eval-out-message :nashy.repl/eval-warning
-  [state {:keys [::nrepl-message channel text]}]
-  ;; lots of choices as to what to do here
-  ;; but to be safe lets send an :err out
-  ;; and send a warning response
+  [state {:keys [::nrepl-message ::parsed-form message] :as msg}]
+  (let [warning-msg (merge
+                     (merge-with #(+ %1 (dec %2))
+                                 (select-keys parsed-form [:line :column :end-line :end-column])
+                                 (select-keys msg         [:line :column :end-line :end-column]))
+                     (assoc (select-keys msg [:ns :file :message :extra])
+                            :status :eval-warning))
+        message (str message " at " (utils/format-line-column warning-msg))]
+    {::send [{:err message} warning-msg]
+     ::nrepl-message nrepl-message}))
 
-  ;; we can save all the warnings under the id of the message up to a
-  ;; certain maxlen with a timestamp in a priority map 
-
-  ;; we can then intercept *w to deliver the warnings
-  ;; and or respond to a message to deliver them
-  
-  {::send {channel text}
+(defmethod process-eval-out-message :nashy.repl/eval-error
+  [state {:keys [::nrepl-message exception] :as msg}]
+  (prn :exception msg)
+  {::send [(cond-> {:status :eval-error}
+             (instance? Exception exception)
+             (assoc :ex (-> exception class str)
+                    :root-ex (-> (#'clojure.main/root-cause exception) class str)))
+           {:err (.getMessage exception)}]
    ::nrepl-message nrepl-message})
 
 (defmethod process-eval-out-message ::interrupted [state msg]
@@ -117,7 +131,7 @@
             (>! out v))
           ;; lingering output from the repl normally print output
           eval-out
-          (process-eval-out-message state (assoc v ::nrepl-message @last-eval-msg)))
+          (put! out (process-eval-out-message state (assoc v ::nrepl-message @last-eval-msg))))
         (recur)))
     out))
 
@@ -140,7 +154,6 @@
       (if (#{"eval" "interrupt"} (:op msg))
         (put! in msg)
         (forward-handler msg)))))
-
 
 ;; development code
 
@@ -168,34 +181,23 @@
 
   (def res (atom []))
   (def evaluator (-> (fn [out-msg] (swap! res conj out-msg))
-                     (evaluate-cljs nash/repl-env)))
+                     (evaluate-cljs-new nash/repl-env)))
 
   (defn help [msg]
     (reset! res [])
     (evaluator msg)
-    (Thread/sleep 300)
-    @res)
+    (Thread/sleep 200)
+    (map ::send @res))
 
   (help (assoc sample-data :op "eval" :code "(+ 1 2)"))
-  
+  (help (assoc sample-data :op "eval" :code "(+ 1 4) ) (prn 7) 1"))
+  (help (assoc sample-data :op "eval" :code "(+ 1 4) 
 
+      a ) (prn 7) 1"))
+
+  (help (assoc sample-data :op "eval" :code "(defn)"))
   
   )
-
-
-
-#_(defn create-repl-eval-stack []
-  (let [in (chan)]
-    
-
-    )
-
-  )
-
-
-
-
-
 
 (defn cljs-eval [h]
   (fn [{:keys [op session interrupt-id id transport] :as msg}]
