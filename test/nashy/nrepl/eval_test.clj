@@ -15,6 +15,8 @@
         evaluator
         (-> (fn [out-msg] (swap! result conj out-msg))
             (ne/evaluate-cljs-new nash/repl-env))]
+    ;; need to wait for this complete initializing
+    (Thread/sleep 3000)
     {:result result
      :evaluator evaluator}))
 
@@ -29,7 +31,6 @@
     (let [{:keys [result evaluator]} (make-evaluator)]
       (binding [*result* result
                 *evaluator* evaluator]
-        (Thread/sleep 1000)
         (f)))))
 
 (use-fixtures :once evaluate-env)
@@ -301,5 +302,14 @@
                     :root-ex "class clojure.lang.ArityException"}
                    {:err
                     "Wrong number of args (0) passed to: core/defn--36958 at line 1 <cljs repl>"}]
+                  [{:status :done}]))
+  )
+
+(deftest javascript-error
+  (assert-resp= (msg :op "eval" :code "js/defnotthere")
+                '([{:status :eval-error,
+                    :ex "class clojure.lang.ExceptionInfo",
+                    :root-ex "class clojure.lang.ExceptionInfo"}
+                   {:err "ReferenceError: \"defnotthere\" is not defined"}]
                   [{:status :done}]))
   )
