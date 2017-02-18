@@ -1,8 +1,9 @@
 (ns nashy.nrepl.eval
   (:require
+   [nashy.utils :as utils]
    [nashy.repl :refer [thread-cljs-repl repl-running? repl-eval kill-repl]]
    [cljs.repl.nashorn :as nash]
-   [clojure.core.async :refer [chan put! go-loop <!! <! >!! close! take!] :as as]
+   [clojure.core.async :refer [chan put! go-loop <!! <! >! >!! close! take!] :as as]
    [clojure.tools.nrepl.transport :as t]
    [clojure.tools.nrepl.middleware :as mid]))
 
@@ -10,23 +11,27 @@
 
 (def ^:dynamic *initialize-wait-time* 3000)
 
-(defn out-message-type [state message]
-  (:type message))
+(defn out-message-type [state message] (:type message))
 
-(defmulti process-out-message #'out-message-type)
+(defmulti process-eval-out-message #'out-message-type)
 
-(defmethod process-out-message :nashy.repl/eval-value [state {:keys [value] :as msg}]
+(defmethod process-eval-out-message :nashy.repl/eval-value [state {:keys [value] :as msg}]
   (-> (select-keys msg [::nrepl-message])
-      (assoc ::send (if (= value ":nashy.nrepl.eval/completed")
-                      {:status "done"}
-                      (select-keys msg [:value :printed-value :ns])))))
+      (assoc ::send (merge
+                     (select-keys (::parsed-form msg)
+                                  [:source :line :column :end-line :end-column])
+                     (select-keys msg [:value :printed-value :ns])))))
 
-(defmethod process-out-message :nashy.output-capture/output
+(defmethod process-eval-out-message ::done [state {:keys [value] :as msg}]
+  (-> (select-keys msg [::nrepl-message])
+      (assoc ::send {:status "done"})))
+
+(defmethod process-eval-out-message :nashy.output-capture/output
   [state {:keys [::nrepl-message channel text]}]
   {::send {channel text}
    ::nrepl-message nrepl-message})
 
-(defmethod process-out-message :nashy.repl/eval-warning
+(defmethod process-eval-out-message :nashy.repl/eval-warning
   [state {:keys [::nrepl-message channel text]}]
   ;; lots of choices as to what to do here
   ;; but to be safe lets send an :err out
@@ -41,45 +46,94 @@
   {::send {channel text}
    ::nrepl-message nrepl-message})
 
-
-
-(defmethod process-out-message ::interrupted [state msg]
+(defmethod process-eval-out-message ::interrupted [state msg]
   (assoc msg :processed true))
 
-(defn handle-in-msg [{:keys [last-eval-msg thread-repl forward-handler] :as state} msg]
-  #_(prn 1 msg)
-  (condp = (:op msg)
-    "eval"
-    (do
-      #_(prn 2 msg)
-      (swap! last-eval-msg #(do % msg))
-      (repl-eval thread-repl (:code msg))
-      (repl-eval thread-repl ":nashy.nrepl.eval/completed"))
-    "interrupt"
-    (do (forward-handler {:type ::interrupted
-                          ::nrepl-message msg})
-        (kill-repl thread-repl)))
-  state)
+(defn map-chan [in f]
+  (let [out (chan 1 (map f))]
+    (as/pipe in out)))
 
-(defn handle-eval-out-msg [{:keys [last-eval-msg forward-handler] :as state} eval-out-msg]
-  #_(prn 4 eval-out-msg)
-  (-> (process-out-message state
-                           (assoc eval-out-msg
-                                  ::nrepl-message @last-eval-msg))
-      forward-handler)
-  state)
 
-;; right now this assumes single complete clojure forms
-(defn evaluate-cljs [forward-handler repl-env-thunk]
+(defn interupt! [state msg]
+  ;; kill repl and clean up channels
+  )
+
+#_(defn interrupt-handler [in state]
+  (let [out (chan)]
+    (go-loop []
+      (when-let [{:keys [op] :as msg} (<! in)]
+        (if (= op "interrupt")
+          (do
+            (interrupt! state msg)
+            (close! out))
+          (do
+            (put! out msg)
+            (recur)))))))
+
+;; returns a channel
+(defn eval-parsed-form [{:keys [last-eval-msg eval-out thread-repl] :as state} out nrepl-eval-msg parsed-form]
+  ;; perhaps do this at the end
+  (prn :handle-eval parsed-form)
+  (repl-eval thread-repl (:source parsed-form))
+  (go-loop []
+    (when-let [eval-out-msg (<! eval-out)]
+      (put! out (process-eval-out-message state (assoc eval-out-msg
+                                                       ::parsed-form parsed-form
+                                                       ::nrepl-message nrepl-eval-msg)))
+      (prn :running eval-out-msg)
+      (when-not (#{:nashy.repl/eval-value :nashy.repl/eval-error} (:type eval-out-msg))
+        (recur)))))
+
+(defn handle-all-evals [{:keys [last-eval-msg] :as state} out nrepl-eval-msg]
+  (let [parsed-forms (utils/read-forms (:code nrepl-eval-msg))]
+    (go-loop [[parsed-form & xs] parsed-forms]
+      (prn :parsed-form parsed-form)
+      (if-not parsed-form
+        (do
+          (prn :finished nrepl-eval-msg)
+          (swap! last-eval-msg #(do % nrepl-eval-msg))
+          (put! out (process-eval-out-message state {:type ::done ::nrepl-message nrepl-eval-msg})))
+        (if-not (:exception parsed-form)
+          (do
+            (prn :before-handle-eval parsed-form)
+            (<! (eval-parsed-form state out nrepl-eval-msg parsed-form))
+            (recur xs))
+          (do
+            (prn :except parsed-form)
+            (put! out (process-eval-out-message state {:type ::read-exception
+                                                       :exception (:exception parsed-form)
+                                                       ::parsed-form parsed-form
+                                                       ::nrepl-message nrepl-eval-msg}))
+            (recur xs)))))))
+
+(defn eval-handler [in {:keys [eval-out last-eval-msg] :as state}]
+  (let [out (chan)]
+    (go-loop []
+      (when-let [[v ch] (as/alts! [in eval-out])]
+        (condp = ch
+          in
+          (if (= (:op v) "eval")
+            (<! (handle-all-evals state out v))
+            (>! out v))
+          ;; lingering output from the repl normally print output
+          eval-out
+          (process-eval-out-message state (assoc v ::nrepl-message @last-eval-msg)))
+        (recur)))
+    out))
+
+(defn evaluate-cljs-new [forward-handler repl-env-thunk]
   (when-not repl-env-thunk
     (throw (ex-info "No REPL ENV provided" {})))
   (let [eval-out (chan)
         in       (chan)
-        state {:last-eval-msg   (atom {})
+        state {:eval-out        eval-out
+               :last-eval-msg   (atom {})
                :thread-repl     (thread-cljs-repl repl-env-thunk #(put! eval-out %))
                :forward-handler forward-handler}
-        _in_loop  (as/reduce handle-in-msg state in)
-        _out_loop (as/reduce handle-eval-out-msg state eval-out)]
+                                        ;_in_loop  (as/reduce handle-in-msg state in)
+        out   (eval-handler in state)
+        ;; this is just a take-all for now
+        _out_loop (as/reduce (fn [state msg] (forward-handler msg) state) state out)]
     ;; cljs needs to compile and load its tools into the env
     (Thread/sleep *initialize-wait-time*)
     (fn [msg]
@@ -88,20 +142,19 @@
         (forward-handler msg)))))
 
 
-
 ;; development code
 
 (defn work-helper [msg]
   (let [res (atom [])
         evaluator (-> (fn [out-msg] (swap! res conj out-msg))
-                      (evaluate-cljs nash/repl-env)
+                      (evaluate-cljs-new nash/repl-env)
                       )]
     #_(Thread/sleep 10000)
     (evaluator msg)
     #_(evaluator {:op "interrupt"})
     (Thread/sleep 5000)
-    (evaluator msg)
-    (Thread/sleep 1000)
+    #_(evaluator msg)
+    #_(Thread/sleep 1000)
     @res))
 
 (def sample-data {:id "91db8f85-06a9-431b-87e9-2f8fed2775cc",
@@ -109,7 +162,7 @@
                   :transport :example})
 
 (comment
-  (work-helper (assoc sample-data :op "eval" :code "(+ 1 2)"))
+  (work-helper (assoc sample-data :op "eval" :code "(+ 1 4) (prn 7) 1"))
 
   (work-helper (assoc sample-data :op "eval" :code "(prn 5)"))
 
