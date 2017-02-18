@@ -48,7 +48,8 @@
                       (let [text (locking buf
                                    (read-buf buf))]
                         (when (pos? (count text))
-                          (handler {:output channel-type
+                          (handler {:type ::output 
+                                    :channel channel-type
                                     :text text})))))
                   true)))
 
