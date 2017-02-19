@@ -14,8 +14,8 @@
   (create-handler
    #'clojure.tools.nrepl.middleware/wrap-describe
    ;; #'clojure.tools.nrepl.middleware.interruptible-eval/interruptible-eval
-   ;;#'clojure.tools.nrepl.middleware.load-file/wrap-load-file
-   ;;#'clojure.tools.nrepl.middleware.session/add-stdin
+   #'clojure.tools.nrepl.middleware.load-file/wrap-load-file
+   #'clojure.tools.nrepl.middleware.session/add-stdin
    #'nashy.nrepl.eval/cljs-eval
    #'clojure.tools.nrepl.middleware.session/session))
 
@@ -37,7 +37,7 @@
   (when-not (ky @state-atom)
     (throw (ex-info (str "Server " (pr-str ky) " not available") {})))
   (with-open [conn (nrepl/connect :port (:port (ky @state-atom)))]
-     (-> (nrepl/client conn 2000)
+     (-> (nrepl/client conn 3000)
          (nrepl/message m)
          doall)))
 
@@ -56,12 +56,44 @@
     (stop-server :cljs)
     res))
 
+(comment
+
+  (:port (:cljs @state-atom))
+  
+  (start-server :cljs {:handler (#'dev-handler)})
+
+  (def conn (nrepl/connect :port (:port (:cljs @state-atom))))
+  (defn msg* [m]
+    (-> (nrepl/client conn 1000)
+        (nrepl/message m)
+        doall))
+
+  ;; create a new connection like this
+  (-> (msg* {:op "clone" :code "(+ 1 3)" }) first :new-session)
+  
+  (msg* {:op "ls-sessions"})
+  
+  (msg* {:op "eval" :code "(+ 1 3) 1 4 3(prn 2) 1" :session "7b31ffb7-fafc-477b-8da1-a29320210840"})
+
+  
+  (stop-server :cljs)
+
+  
+  )
+
+
+
+
 
 (comment
-  (in-nrepl {:op :eval :code "(+ 1 3) (+ 23 1)"})
-  (in-nrepl {:op :eval :code "(prn 3)"})
+  (in-nrepl {:op :eval :code "1 \n(list 1)   "})
+  (in-nrepl {:op :eval :code "(+ 1 3) \n(+ 23 1)"})
+  (in-nrepl {:op :eval :code "(prn 5)"})
   (in-nrepl {:op :describe :verbose? 1})  
 
+
+  
+  
   (in-cljs {:op :eval :code "(+ 1 3)"})
   (in-cljs {:op :describe :verbose? 1})  
   
