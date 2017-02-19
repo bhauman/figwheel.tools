@@ -2,7 +2,7 @@
   (:require
    [nashy.nrepl.eval :as ne]
    [cljs.repl.nashorn :as nash]
-   [clojure.core.async :refer [put!]]
+   [clojure.core.async :refer [put! chan <!!] :as as]
    [clojure.test :refer :all]))
 
 (def ^:dynamic *result* nil #_(atom []))
@@ -12,12 +12,10 @@
 (def ^:dynamic *dev* true)
 
 (defn make-evaluator []
-  (let [result (atom [])
+  (let [result (chan)
         evaluator
-        (-> (fn [out-msg] (swap! result conj out-msg))
+        (-> (fn [out-msg] (put! result out-msg))
             (ne/evaluate-cljs-new nash/repl-env))]
-    ;; need to wait for this complete initializing
-    (Thread/sleep 3000)
     {:result result
      :evaluator evaluator}))
 
@@ -44,10 +42,8 @@
 (defn msg [& data] (apply assoc msg-base data))
 
 (defn evaluate [msg & [timeout]]
-  (reset! *result* [])
   (put! (:input-chan *evaluator*) msg)
-  (Thread/sleep (or timeout 100))
-  @*result*)
+  (<!! (get-result *result*)))
 
 (defn assert-resp= [msg-map expected-res]
   (let [resp (evaluate msg-map)]
@@ -289,7 +285,7 @@
                     :file "<cljs repl>",
                     :message "Use of undeclared Var cljs.user/a",
                     :status "eval-warning"}]
-                  [{:source "a",
+                  #_[{:source "a",
                     :line 2,
                     :column 2,
                     :end-line 2,
@@ -298,7 +294,7 @@
                     :printed-value 1,
                     :ns cljs.user}]
                   ;; now that we are in a ns bc of repl :init no error is thrown
-                  #_[{:status "eval-error"
+                  [{:status "eval-error"
                       :ex "class clojure.lang.ExceptionInfo",
                       :root-ex "class clojure.lang.ExceptionInfo"}
                      {:err "TypeError: Cannot read property \"a\" from undefined\n"}]
@@ -310,7 +306,7 @@
                     :ex "class clojure.lang.ExceptionInfo",
                     :root-ex "class clojure.lang.ArityException"}
                    {:err
-                    "Wrong number of args (0) passed to: core/let at line 1 <cljs repl>"}]
+                    "Wrong number of args (0) passed to: core/let at line 1 <cljs repl>\n"}]
                   [{:status "done"}]))
   )
 
@@ -319,6 +315,6 @@
                 '([{:status "eval-error"
                     :ex "class clojure.lang.ExceptionInfo",
                     :root-ex "class clojure.lang.ExceptionInfo"}
-                   {:err "ReferenceError: \"defnotthere\" is not defined"}]
+                   {:err "ReferenceError: \"defnotthere\" is not defined\n"}]
                   [{:status "done"}]))
   )
