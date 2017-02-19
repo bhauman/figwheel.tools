@@ -14,7 +14,7 @@
   (let [result (atom [])
         evaluator
         (-> (fn [out-msg] (swap! result conj out-msg))
-            (ne/evaluate-cljs-new nash/repl-env))]
+            (ne/evaluate-cljs-new nash/repl-env "1"))]
     ;; need to wait for this complete initializing
     (Thread/sleep 3000)
     {:result result
@@ -68,10 +68,10 @@
                       :value "3",
                       :printed-value 1,
                       :ns cljs.user}]
-                    [{:status :done}]])
+                    [{:status "done"}]])
     (assert-resp= (msg :op "eval" :code "1")
                   '[[{:source "1", :value "1", :printed-value 1, :ns cljs.user}]
-                    [{:status :done}]]))
+                    [{:status "done"}]]))
 
   (testing "multiple eval"
     (assert-resp= (msg :op "eval" :code "(+ 1 4) 1 (+ 23 1)")
@@ -92,7 +92,7 @@
                       :value "24",
                       :printed-value 1,
                       :ns cljs.user}]
-                    [{:status :done}]]))
+                    [{:status "done"}]]))
 
   (testing "reader conditionals"
     (assert-resp= (msg :op "eval" :code "(+ 1 4) #?(:cljs 1 :clj 2) (+ 23 1)")
@@ -116,7 +116,7 @@
                       :value "24",
                       :printed-value 1,
                       :ns cljs.user}]
-                    [{:status :done}]])
+                    [{:status "done"}]])
 
     (assert-resp= (msg :op "eval" :code "#?(:cljs 1 :clj 2) (+ 23 1)")
                   '[[{:source "#?(:cljs 1 :clj 2)",
@@ -131,13 +131,13 @@
                       :value "24",
                       :printed-value 1,
                       :ns cljs.user}]
-                    [{:status :done}]])
+                    [{:status "done"}]])
     (assert-resp= (msg :op "eval" :code "#?(:cljs 1 :clj 2)")
                   '([{:source "#?(:cljs 1 :clj 2)",
                       :value "1",
                       :printed-value 1,
                       :ns cljs.user}]
-                    [{:status :done}]))
+                    [{:status "done"}]))
     )
 
   (testing "tags"
@@ -162,7 +162,7 @@
                       :value "24",
                       :printed-value 1,
                       :ns cljs.user}]
-                    [{:status :done}]))
+                    [{:status "done"}]))
     (assert-resp= (msg :op "eval" :code "#js {} (+ 23 1)")
                   '([{:source "#js {}",
                       :value "#js {}",
@@ -176,7 +176,7 @@
                       :value "24",
                       :printed-value 1,
                       :ns cljs.user}]
-                    [{:status :done}]))
+                    [{:status "done"}]))
     (assert-resp= (msg :op "eval" :code "(+ 1 4) #js {}")
                   '([{:source "(+ 1 4)",
                       :line 1,
@@ -190,24 +190,24 @@
                       :value "#js {}",
                       :printed-value 1,
                       :ns cljs.user}]
-                    [{:status :done}]))))
+                    [{:status "done"}]))))
 
 (deftest parsed-form-reader-error
   (assert-resp= (msg :op "eval" :code ")")
-                '([{:status :eval-error,
+                '([{:status "eval-error"
                     :ex "class clojure.lang.ExceptionInfo",
                     :root-ex "class clojure.lang.ExceptionInfo"}
                    {:err "Unmatched delimiter )"}]
-                  [{:status :done}]))
+                  [{:status "done"}]))
 
   (assert-resp= (msg :op "eval" :code "1 ) 2")
                 '([{:source "1", :value "1", :printed-value 1, :ns cljs.user}]
-                  [{:status :eval-error,
+                  [{:status "eval-error"
                     :ex "class clojure.lang.ExceptionInfo",
                     :root-ex "class clojure.lang.ExceptionInfo"}
                    {:err "Unmatched delimiter )"}]
                   [{:source "2", :value "2", :printed-value 1, :ns cljs.user}]
-                  [{:status :done}]))
+                  [{:status "done"}]))
   
   )
 
@@ -222,7 +222,7 @@
                     :value "nil",
                     :printed-value 1,
                     :ns cljs.user}]
-                  [{:status :done}]))
+                  [{:status "done"}]))
   (assert-resp= (msg :op "eval" :code "(+ 1 4) (prn 7) 1")
                 '([{:source "(+ 1 4)",
                     :line 1,
@@ -242,7 +242,7 @@
                     :printed-value 1,
                     :ns cljs.user}]
                   [{:source "1", :value "1", :printed-value 1, :ns cljs.user}]
-                  [{:status :done}]))
+                  [{:status "done"}]))
   
   (assert-resp= (msg :op "eval" :code "(prn 7) (println \"hello\") (pr {})")
                 '([{:out "7\n"}]
@@ -272,7 +272,7 @@
                     :value "nil",
                     :printed-value 1,
                     :ns cljs.user}]
-                  [{:status :done}]))
+                  [{:status "done"}]))
   )
 
 
@@ -288,28 +288,28 @@
                     :file "<cljs repl>",
                     :message "Use of undeclared Var cljs.user/a",
                     :extra {:prefix cljs.user, :suffix a, :macro-present? false},
-                    :status :eval-warning}]
-                  [{:status :eval-error,
+                    :status "eval-warning"}]
+                  [{:status "eval-error"
                     :ex "class clojure.lang.ExceptionInfo",
                     :root-ex "class clojure.lang.ExceptionInfo"}
                    {:err "TypeError: Cannot read property \"a\" from undefined"}]
-                  [{:status :done}])))
+                  [{:status "done"}])))
 
 (deftest eval-error
-  (assert-resp= (msg :op "eval" :code " (defn)")
-                '([{:status :eval-error,
+  (assert-resp= (msg :op "eval" :code " (let)")
+                '([{:status "eval-error"
                     :ex "class clojure.lang.ExceptionInfo",
                     :root-ex "class clojure.lang.ArityException"}
                    {:err
-                    "Wrong number of args (0) passed to: core/defn--36958 at line 1 <cljs repl>"}]
-                  [{:status :done}]))
+                    "Wrong number of args (0) passed to: core/let at line 1 <cljs repl>"}]
+                  [{:status "done"}]))
   )
 
 (deftest javascript-error
   (assert-resp= (msg :op "eval" :code "js/defnotthere")
-                '([{:status :eval-error,
+                '([{:status "eval-error"
                     :ex "class clojure.lang.ExceptionInfo",
                     :root-ex "class clojure.lang.ExceptionInfo"}
                    {:err "ReferenceError: \"defnotthere\" is not defined"}]
-                  [{:status :done}]))
+                  [{:status "done"}]))
   )

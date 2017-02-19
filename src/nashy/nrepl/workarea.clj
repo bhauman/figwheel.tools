@@ -14,9 +14,12 @@
   (create-handler
    #'clojure.tools.nrepl.middleware/wrap-describe
    ;; #'clojure.tools.nrepl.middleware.interruptible-eval/interruptible-eval
-   #'clojure.tools.nrepl.middleware.load-file/wrap-load-file
-   #'clojure.tools.nrepl.middleware.session/add-stdin
+
    #'nashy.nrepl.eval/cljs-eval
+
+   ; #'clojure.tools.nrepl.middleware.load-file/wrap-load-file
+   ;;#'clojure.tools.nrepl.middleware.session/add-stdin
+
    #'clojure.tools.nrepl.middleware.session/session))
 
 ;; development helpers
@@ -69,12 +72,15 @@
         doall))
 
   ;; create a new connection like this
-  (-> (msg* {:op "clone" :code "(+ 1 3)" }) first :new-session)
+  (def sess-id (-> (msg* {:op "clone" :code "(+ 1 3)" }) first :new-session))
   
   (msg* {:op "ls-sessions"})
   
-  (msg* {:op "eval" :code "(+ 1 3) 1 4 3(prn 2) 1" :session "7b31ffb7-fafc-477b-8da1-a29320210840"})
+  (msg* {:op "eval" :code "(+ 1 3) 1 4 3 (prn 2) 1" :session sess-id})
 
+  (msg* {:op "eval" :code "(str *ns*)" :session sess-id})
+
+  
   
   (stop-server :cljs)
 

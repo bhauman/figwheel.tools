@@ -51,7 +51,7 @@
                    ;; bind out and err on creation not setup
                    repl-env
                    {:need-prompt (constantly false)
-                    :init (fn [])
+                    ;:init (fn [])
                     :prompt (fn [])
                     :bind-err false
                     :quit-prompt (fn [])

@@ -6,11 +6,10 @@
 
   :min-lein-version "2.7.1"
 
-  ;:aot [nashy.QBInputStream]
-  
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/clojurescript "1.9.229"]
                  [rhizome "0.2.7"]
+                 [org.clojure/tools.nrepl "0.2.12"]
                  [org.clojure/core.async "0.2.395"
                   :exclusions [org.clojure/tools.reader]]]
 
@@ -18,7 +17,6 @@
             [lein-cljsbuild "1.1.5" :exclusions [[org.clojure/clojure]]]]
 
   :source-paths ["src"]
-  ; :java-source-paths ["java-src"]
 
   :aot [nashy.reader-helper]
   
@@ -105,6 +103,8 @@
                    :source-paths ["src" "dev"]
                    ;; for CIDER
                    ;; :plugins [[cider/cider-nrepl "0.12.0"]]
-                   :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}}}
+                   :repl-options {;:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]
+                                  :skip-default-init true
+                                  :custom-eval '(println "Welcome Bruce!!!")}}}
 
 )
