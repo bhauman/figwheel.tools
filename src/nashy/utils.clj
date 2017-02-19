@@ -1,9 +1,10 @@
 (ns nashy.utils
   (:require
+   [clojure.string :as string]
    [clojure.tools.reader :as r]
    [clojure.tools.reader.reader-types :as rtyp]))
 
-(defn line-column-str [{:keys [line column]}]
+(defn format-line-column [{:keys [line column]}]
   (->> (cond-> []
          line   (conj (str "line " line))
          column (conj (str "column " column)))
