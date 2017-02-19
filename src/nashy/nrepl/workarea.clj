@@ -80,6 +80,11 @@
 
   (msg* {:op "eval" :code "(str *ns*)" :session sess-id})
 
+  (msg* {:op "eval" :code "asdf" :session sess-id})
+  (msg* {:op "eval" :code "(ns cljs.user)" :session sess-id})
+
+  (msg* {:op "eval" :code "(defn asdf [] 1)" :session sess-id})
+  
   
   
   (stop-server :cljs)

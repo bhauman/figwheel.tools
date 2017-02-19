@@ -72,7 +72,7 @@
   (let [out (chan 1 (map f))]
     (as/pipe in out)))
 
-(defn initialize-cljs-code []
+#_(defn initialize-cljs-code []
   (pr-str
    '(do (set! cljs.core/*ns* 'user.cljs))))
 
@@ -143,7 +143,7 @@
         (recur)))
     out))
 
-(defn evaluate-cljs-new [forward-handler repl-env-thunk initial-eval-script]
+(defn evaluate-cljs-new [forward-handler repl-env-thunk]
   (when-not repl-env-thunk
     (throw (ex-info "No REPL ENV provided" {})))
   (let [eval-out (chan)
@@ -152,15 +152,13 @@
                :last-eval-msg   (atom {})
                :thread-repl     (thread-cljs-repl repl-env-thunk #(put! eval-out %))
                :forward-handler forward-handler}
-                                        ;_in_loop  (as/reduce handle-in-msg state in)
         out   (eval-handler in state)
-        _     (put! in {:op "eval" :code initial-eval-script})
-        ;; _     (drain out)
         ;; this is just a take-all for now
         _out_loop (as/reduce (fn [state msg] (forward-handler msg) state) state out)]
     ;; cljs needs to compile and load its tools into the env
     (Thread/sleep *initialize-wait-time*)
-    (fn [msg]
+    {:input-chan in}
+    #_(fn [msg]
       (if (#{"eval" "interrupt"} (:op msg))
         (put! in msg)
         (forward-handler msg)))))
@@ -176,17 +174,17 @@
   (def evaluator (-> (fn [out-msg] (swap! res conj out-msg))
                      (evaluate-cljs-new nash/repl-env)))
 
-  (defn help [msg]
+  (defn help* [msg]
     (reset! res [])
-    (evaluator msg)
+    (put! (:input-chan evaluator) msg)
     (Thread/sleep 200)
-    (map ::send @res))
+    @res)
+
+  (defn help [msg]
+    (map ::send (help* msg)))
 
   (defn response [msg]
-    (reset! res [])
-    (evaluator msg)
-    (Thread/sleep 200)
-    (map send-on-transport-msg @res))
+    (map send-on-transport-msgs (help* msg)))
 
   (help (assoc sample-data :op "eval" :code "(+ 1 2)"))
   (help (assoc sample-data :op "eval" :code "(+ 1 4) (prn 7) 1"))
@@ -222,22 +220,30 @@
 ;; infinitely more understandable and controllable
 ;; to manage your own session state
 
+(def ^:dynamic *cljs-evaluator* nil)
+
 (def cljs-evaluators (atom {}))
+
+;; thinking about environments consider these things
+;; 1 complier env per repl env ->
+;; :cljs-env {:compiler-env # :repl-env # :compiler-opts # :compler-sources #}
 
 (defn cljs-eval [h]
   (fn [{:keys [op session interrupt-id id transport] :as msg}]
     (if (= op "eval")
       (let [session-id (:id (meta session))]
-        (when-not (contains? @cljs-evaluators session-id)
-          (prn :creating-handler)
+        (when-not (contains? @session #'*cljs-evaluator*)
+          (prn :creating-evaluator)
           (let [new-evaluator (-> h
                                   send-on-transport-handler
-                                  (evaluate-cljs-new nash/repl-env (initialize-cljs-code)))]
+                                  (evaluate-cljs-new nash/repl-env))]
             ;; on interupt we will need to clean up
-            (swap! cljs-evaluators assoc session-id new-evaluator))
-          (prn :finished-creating-handler))
+            (swap! session assoc #'*cljs-evaluator* new-evaluator))
+          (prn :finished-creating-evaluator))
         (binding [*msg* msg]
-          ((get @cljs-evaluators session-id) msg)))
+          (if-let [evaluator (get @session #'*cljs-evaluator*)]
+            (put! (:input-chan evaluator) msg)
+            (h msg))))
       (h msg))))
 
 (mid/set-descriptor! #'cljs-eval

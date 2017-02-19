@@ -2,6 +2,7 @@
   (:require
    [nashy.nrepl.eval :as ne]
    [cljs.repl.nashorn :as nash]
+   [clojure.core.async :refer [put!]]
    [clojure.test :refer :all]))
 
 (def ^:dynamic *result* nil #_(atom []))
@@ -14,7 +15,7 @@
   (let [result (atom [])
         evaluator
         (-> (fn [out-msg] (swap! result conj out-msg))
-            (ne/evaluate-cljs-new nash/repl-env "1"))]
+            (ne/evaluate-cljs-new nash/repl-env))]
     ;; need to wait for this complete initializing
     (Thread/sleep 3000)
     {:result result
@@ -44,7 +45,7 @@
 
 (defn evaluate [msg & [timeout]]
   (reset! *result* [])
-  (*evaluator* msg)
+  (put! (:input-chan *evaluator*) msg)
   (Thread/sleep (or timeout 100))
   @*result*)
 
@@ -197,7 +198,7 @@
                 '([{:status "eval-error"
                     :ex "class clojure.lang.ExceptionInfo",
                     :root-ex "class clojure.lang.ExceptionInfo"}
-                   {:err "Unmatched delimiter )"}]
+                   {:err "Unmatched delimiter )\n"}]
                   [{:status "done"}]))
 
   (assert-resp= (msg :op "eval" :code "1 ) 2")
@@ -205,7 +206,7 @@
                   [{:status "eval-error"
                     :ex "class clojure.lang.ExceptionInfo",
                     :root-ex "class clojure.lang.ExceptionInfo"}
-                   {:err "Unmatched delimiter )"}]
+                   {:err "Unmatched delimiter )\n"}]
                   [{:source "2", :value "2", :printed-value 1, :ns cljs.user}]
                   [{:status "done"}]))
   
@@ -279,7 +280,7 @@
 (deftest warnings
   (assert-resp= (msg :op "eval" :code "  
  a")
-                '([{:err "Use of undeclared Var cljs.user/a at line 2, column 2"}
+                '([{:err "Use of undeclared Var cljs.user/a at line 2, column 2\n"}
                    {:line 2,
                     :column 2,
                     :end-line 2,
@@ -287,12 +288,20 @@
                     :ns cljs.user,
                     :file "<cljs repl>",
                     :message "Use of undeclared Var cljs.user/a",
-                    :extra {:prefix cljs.user, :suffix a, :macro-present? false},
                     :status "eval-warning"}]
-                  [{:status "eval-error"
-                    :ex "class clojure.lang.ExceptionInfo",
-                    :root-ex "class clojure.lang.ExceptionInfo"}
-                   {:err "TypeError: Cannot read property \"a\" from undefined"}]
+                  [{:source "a",
+                    :line 2,
+                    :column 2,
+                    :end-line 2,
+                    :end-column 3,
+                    :value "nil",
+                    :printed-value 1,
+                    :ns cljs.user}]
+                  ;; now that we are in a ns bc of repl :init no error is thrown
+                  #_[{:status "eval-error"
+                      :ex "class clojure.lang.ExceptionInfo",
+                      :root-ex "class clojure.lang.ExceptionInfo"}
+                     {:err "TypeError: Cannot read property \"a\" from undefined\n"}]
                   [{:status "done"}])))
 
 (deftest eval-error
