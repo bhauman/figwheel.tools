@@ -219,7 +219,8 @@
         (cond
           (nil? v) (close! out)
           (pred? v) (do (>! out v) (close! out))
-          :else (recur))))
+          :else (do (>! out v)
+                  (recur)))))
     out))
 
 (defn get-result
@@ -228,7 +229,7 @@
   ([result-chan tmout]
    (as/into [] (async-take-upto done? result-chan (timeout tmout)))))
 
-#_(get-result (let [ch (chan)]
+#_ (<!! (get-result (let [ch (chan)]
                 (future (do
                           (Thread/sleep 100)
                           (as/onto-chan ch [{} {}
@@ -236,7 +237,7 @@
                                             {} {}])))
                 
                 ch)
-              500)
+              500))
 
 ;; TODO
 ;; tests for "interrupt" which should return done

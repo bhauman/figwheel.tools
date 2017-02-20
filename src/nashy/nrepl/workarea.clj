@@ -72,9 +72,11 @@
         doall))
 
   ;; create a new connection like this
-  (def sess-id (-> (msg* {:op "clone" :code "(+ 1 3)" }) first :new-session))
+  (def sess-id (-> (msg* {:op "clone" }) first :new-session))
   
   (msg* {:op "ls-sessions"})
+  (msg* {:op "eval" :code "1" :session sess-id})
+
   
   (msg* {:op "eval" :code "(+ 1 3) 1 4 3 (prn 2) 1" :session sess-id})
 
