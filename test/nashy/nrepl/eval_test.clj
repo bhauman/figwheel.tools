@@ -42,8 +42,8 @@
 (defn msg [& data] (apply assoc msg-base data))
 
 (defn evaluate [msg & [timeout]]
-  (put! (:input-chan *evaluator*) msg)
-  (<!! (get-result *result*)))
+  (as/>!! (:input-chan *evaluator*) msg)
+  (<!! (ne/get-result *result* 10000)))
 
 (defn assert-resp= [msg-map expected-res]
   (let [resp (evaluate msg-map)]
@@ -324,4 +324,17 @@
                 '([{:status "session-idle"}] [{:status "done"}])))
 
 (deftest interrupt-when-blocking
+  #_(testing "missmatched id"
+    (try
+      (reset! ne/*simulate-blocking-eval true)
+      ;; this blocks
+      (put! (:input-chan *evaluator*) (msg :op "eval" :code "(+ 1 2)"))
+      (assert-resp= (msg :op "interrupt")
+                    '([{:status "interrupted"}] [{:status "done"}]))
+      
+      (finally
+        (reset! ne/*simulate-blocking-eval false))))
 
+  
+
+  )
