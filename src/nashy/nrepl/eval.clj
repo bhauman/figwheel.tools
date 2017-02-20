@@ -4,7 +4,7 @@
    [nashy.repl :refer [thread-cljs-repl repl-running? repl-eval kill-repl]]
    [clojure.tools.nrepl.misc :as nrepl-misc]
    [cljs.repl.nashorn :as nash]
-   [clojure.core.async :refer [chan put! go-loop <!! <! >! >!! close! take!] :as as]
+   [clojure.core.async :refer [chan put! go go-loop <!! <! >! >!! close! take! timeout] :as as]
    [clojure.tools.nrepl.transport :as transport]
    [clojure.tools.nrepl.middleware :as mid]))
 
@@ -15,6 +15,9 @@
 (def ^:dynamic *initialize-wait-time* 5000)
 
 (def ^:dynamic *msg* nil)
+
+;; for testing purposes
+(def *simulate-blocking-eval (atom false))
 
 (defn out-message-type [state message] (:type message))
 
@@ -84,7 +87,9 @@
     "interrupt-id-mismatch"
     "interrupted"))
 
-;; this is here mostly for development purposes 
+;; this is here mostly for development purposes
+;; !interesting feature! two or three interrupts in a row
+;; can signal a kill
 (defn interrupt-handler [in {:keys [interrupt-chan]}]
   (let [out (chan)]
     (go-loop []
@@ -104,7 +109,10 @@
   (prn :handle-eval parsed-form)
   (repl-eval thread-repl (:source parsed-form))
   (go-loop []
-    (if-let [[eval-out-msg ch] (as/alts! [eval-out interrupt-chan])]
+    (if-let [[eval-out-msg ch] (as/alts! [(if @*simulate-blocking-eval
+                                            (chan)
+                                            eval-out) 
+                                          interrupt-chan])]
       (do
         (prn :running )
         (condp = ch
@@ -123,6 +131,9 @@
             (-->! out state
                   {:type ::interrupt-response
                    ::interrupt-status int-status
+                   ::nrepl-message eval-out-msg})
+            (-->! out state
+                  {:type ::done
                    ::nrepl-message eval-out-msg})
             (if (= int-status "interrupted")
               ::interrupted
@@ -157,6 +168,7 @@
             ;; as this seems like expected behavior and gives the user output that is easier
             ;; to understand and
             ;; why feed any forms after a bad form? it's just asking for trouble
+            #_(recur [])
             (recur xs)))))))
 
 (defn kill! [{:keys [eval-out interrupt-chan thread-repl] :as state}]
@@ -177,14 +189,21 @@
               (>! out v))
             ;; lingering output from the repl normally print output we will associate it
             ;; with the last message sent
+            ;; we add a sentinal flag below to help us reason about the behavior of the
+            ;; system during dev and test
             eval-out
-            (-->! out state (assoc v ::nrepl-message @last-eval-msg))
+            (-->! out state
+                  (->> (assoc @last-eval-msg :bypass-sentinal true)
+                       (assoc v ::nrepl-message)))
             ;; when interupt comes here we are waiting for input and thus idly accepting
             ;; new eval requests
             interrupt-chan
-            (-->! out state {:type ::interrupt-response
-                             ::interrupt-status "session-idle"
-                             ::nrepl-message v}))
+            (do
+              (-->! out state {:type ::interrupt-response
+                               ::interrupt-status "session-idle"
+                               ::nrepl-message v})
+              (-->! out state {:type ::done
+                               ::nrepl-message v})))
           (recur))
         ;; on close kill-signal!
         (do (kill! state) (close! out))))
@@ -193,14 +212,31 @@
 (defn done? [sq]
   (->> sq :nashy.nrepl.eval/send last :status (= "done")))
 
-(defn get-result [result-chan]
-  (as/reduce (fn [accum res]
-               (prn :res res)
-               (if (done? res)
-                 (reduced (conj accum res))
-                 (conj accum res)))
-             []
-             result-chan))
+(defn async-take-upto [pred? & chs]
+  (let [out (chan)]
+    (go-loop []
+      (let [[v c] (as/alts! chs)]
+        (cond
+          (nil? v) (close! out)
+          (pred? v) (do (>! out v) (close! out))
+          :else (recur))))
+    out))
+
+(defn get-result
+  ([result-chan]
+   (get-result result-chan 3000))
+  ([result-chan tmout]
+   (as/into [] (async-take-upto done? result-chan (timeout tmout)))))
+
+#_(get-result (let [ch (chan)]
+                (future (do
+                          (Thread/sleep 100)
+                          (as/onto-chan ch [{} {}
+                                            {:nashy.nrepl.eval/send [{:status "done"}]}
+                                            {} {}])))
+                
+                ch)
+              500)
 
 ;; TODO
 ;; tests for "interrupt" which should return done
@@ -210,7 +246,6 @@
 ;; add options validation to thread-repl
 ;; rename this fn
 ;; perhaps take an in and return an out
-
 
 
 (defn evaluate-cljs-new [forward-handler repl-env-thunk]
@@ -232,9 +267,8 @@
         ;; can fail ...
         _  (put! in {:op "eval" :code "1"})
         ;; we could have a timeout here
-        ;; this takes 26 seconds! under nashorn for CLJS to setup its env with
         ;; its default init code
-        _  (<!! (get-result out))
+        _  (<!! (get-result out 20000))
         ;; this is just a take-all for now
         _out_loop (as/reduce (fn [state msg] (forward-handler msg) state) state out)]
     {:input-chan in
@@ -243,15 +277,31 @@
 ;; development code
 
 (comment
-  (def sample-data {:id "91db8f85-06a9-431b-87e9-2f8fed2775cc",
-                    :session (atom {:id "964ef60f-2a44-468f-9807-a3585cd953a6"})
-                    :transport :example})
+  
 
   (do ;; setup
+    (def sample-data {:id "91db8f85-06a9-431b-87e9-2f8fed2775cc",
+                      :session (atom {:id "964ef60f-2a44-468f-9807-a3585cd953a6"})
+                      :transport :example})
+    (def sample-data2 {:id "91db8f85-06a9-data2-87e9-2f8fed2775cc",
+                      :session (atom {:id "964ef60f-2a44-468f-9807-a3585cd953a6"})
+                      :transport :example})
+    (def sample-mark {:id "91db8f85-06a9-mark-87e9-2f8fed2775cc",
+                      :session (atom {:id "964ef60f-2a44-468f-9807-a3585cd953a6"})
+                      :transport :example})
+    (declare evaluator)
+
+    (defn kill []
+      (when (:input-chan @#'evaluator)
+        (close! (:input-chan @#'evaluator))))
+    
+    (when evaluator (kill))
+    
     (def res (atom []))
     (def evaluator (time
                     (-> (fn [out-msg] (swap! res conj out-msg))
-                       (evaluate-cljs-new (nash/repl-env)))))
+                       (evaluate-cljs-new nash/repl-env))))
+
     
     (defn help* [msg]
       (reset! @#'res [])
@@ -264,11 +314,15 @@
     
     (defn response [msg]
       (map send-on-transport-msgs (help* msg))))
-  
-  (help (assoc sample-data :op "eval" :code "(+ 1 2)"))
 
-  (help* (assoc sample-data :op "interrupt"))
- 
+
+  
+  (help (assoc sample-data2 :op "eval" :code "(+ 1 2)"))
+
+  
+  (reset! *simulate-blocking-eval true)
+  (help* (assoc sample-mark :op "interrupt" :interrupt-id "asdf"))
+  
   (help (assoc sample-data :op "eval" :code "(+ 1 4) (prn 7) 1"))
   (help (assoc sample-data :op "eval" :code "(+ 1 4) 
 

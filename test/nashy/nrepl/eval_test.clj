@@ -318,3 +318,10 @@
                    {:err "ReferenceError: \"defnotthere\" is not defined\n"}]
                   [{:status "done"}]))
   )
+
+(deftest interrupt-when-idle 
+  (assert-resp= (msg :op "interrupt")
+                '([{:status "session-idle"}] [{:status "done"}])))
+
+(deftest interrupt-when-blocking
+
