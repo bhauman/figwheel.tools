@@ -38,6 +38,8 @@ TODO
 	  - in this case a files changed event could trigger a compile and
         we want a reload-ns event to be sent to the client *after* compile has completed
 		- the way to do this isn't obvious 
+		- Continuations are a good model to lool at 
+		  i.e. attach a composable transport fn to the nrepl-message
 		- a transport filter seems to be a possibility if not the best way of doing this
   - cljs-client 
     * while repl eval is simple a way of talking to the client it
@@ -79,7 +81,7 @@ TODO
 
 # Why nREPL?
 
-*It is the widely deployed* and is the default for Clojure tooling
+*It is the widely deployed* and is the default for Clojure tooling/repl
 communication. It works well enough and at it's base is simple enough
 to completely gut and start over. We should also understand that the
 ClojureScript community is still very small in relative terms and is
@@ -108,5 +110,80 @@ Towards that goal I would say that each middleware component should be
 responsible for its own enviroment including handling its own io messages.
 
 
+
+# TODOS 
+## in the nrepl.eval
+
+Heavily relying on a blocking eval would be nice to know a certain
+result belongs to a given message considering the different behavior
+of different envs.
+
+Or ensure that only one eval js runtime env exists per repl environent
+if broadcast mode is selected 
+
+Consider what it would mean to have a fully continuation based
+implementation of nrepl.eval ...
+
+This would rely on pushing the matching up of in and out eval in a lower lib.
+
+Continuations can't travel across the eval divide without an id going
+out and coming back. We could do this by evaling inside a map and
+changing the wrap-fn to assign the correct values to *1 *2 *3
+
+Why continuations?
+
+It may be possible to come up with some simple composable operators/combinators
+that help us express the complexity of the asynchronous nature of the system.
+
+Hang ups with continuations 
+  timeouts?  these are possible. 
+  interrupt on hanging eval betond a time out it would be nice to send a signal
+   to interrupt - this is where continuations become a little messy 
+   an outside signal interfeering on an already composed message stack
+
+
+
+
+OK starting to see a simpler way of providing an eval service api
+
+But it relies on an interface like this
+
+    eval(env code continue-handler)
+    interrupt(env continue-handler)
+    kill(env continue-handler)
+
+the continue-handler will be called multiple times with results such
+as value, warning, exception, out/err output.
+
+(Read is not currently a problem for out javascript eval?)
+
+this call will queue evals internally if necessary
+and ensures that the result is the actual result of the call
+
+    eval(env code continue-handler)
+
+The reason queuing is nessesary is to ensure the capture of output **during**
+the actual execution of the code. 
+
+This is only necessary because we are using the cljs repl as a base
+for this and it is a matter of timing to match output to a command so
+sending it off collecting output and waiting for it to return is a
+natural course of action.
+
+Tagging output with an id would allow us to push any queuing to
+to the javascript runtime env which doesn't actually need it bc it is
+single threaded. 
+
+We could give the output an id and ferry it across the output streams
+that are used by the repl.
+
+But this hackery is probably better avoided and just use blocking
+atomic exec on the cljs-repl side and capture the output. And when we
+have our own repl code that talks to a repl-env ...
+
+we can also create a blocking eval that 
+returns {:value # :out # :err # :warns # :except #}
+
+    eval(env code) 
 
 
