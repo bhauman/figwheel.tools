@@ -34,16 +34,23 @@
 
 (use-fixtures :once evaluate-env)
 
-(def msg-base
-  {:id "91db8f85-06a9-431b-87e9-2f8fed2775cc",
+(defn msg-base []
+  {:id (str (java.util.UUID/randomUUID))
    ;:session (atom {:id "964ef60f-2a44-468f-9807-a3585cd953a6"})
    :transport :example})
 
-(defn msg [& data] (apply assoc msg-base data))
+(defn msg [& data] (apply assoc (msg-base) data))
 
 (defn evaluate [msg & [timeout]]
+  (prn :eval msg)
   (as/>!! (:input-chan *evaluator*) msg)
-  (<!! (ne/get-result *result* 10000)))
+  (let [out (<!! (ne/get-filtered-result
+        #(= (:id msg) (:id (:nashy.nrepl.eval/nrepl-message %)))
+        *result*
+        10000))]
+    (prn :out out)
+    out)
+  )
 
 (defn assert-resp= [msg-map expected-res]
   (let [resp (evaluate msg-map)]
@@ -56,13 +63,13 @@
 
 (deftest eval-test
   (testing "simple eval"
-    (assert-resp= (msg :op "eval" :code "(+ 1 2)")
-                  '[[{:source "(+ 1 2)",
+    (assert-resp= (msg :op "eval" :code "(+ 1 99)")
+                  '[[{:source "(+ 1 99)",
                       :line 1,
                       :column 1,
                       :end-line 1,
-                      :end-column 8,
-                      :value "3",
+                      :end-column 9,
+                      :value "100",
                       :printed-value 1,
                       :ns cljs.user}]
                     [{:status "done"}]])
@@ -328,12 +335,14 @@
     (try
       (reset! ne/*simulate-blocking-eval true)
       ;; this blocks
-      (put! (:input-chan *evaluator*) (msg :op "eval" :code "(+ 1 2)"))
+      (as/>!! (:input-chan *evaluator*) (msg :op "eval" :code "(+ 1 2)"))
       (assert-resp= (msg :op "interrupt")
                     '([{:status "interrupted"}] [{:status "done"}]))
       
       (finally
-        (reset! ne/*simulate-blocking-eval false))))
+        (reset! ne/*simulate-blocking-eval false)))
+
+    )
 
   
 

@@ -212,22 +212,29 @@
 (defn done? [sq]
   (->> sq :nashy.nrepl.eval/send last :status (= "done")))
 
-(defn async-take-upto [pred? & chs]
+(defn async-take-upto [filter-pred? end-pred? & chs]
   (let [out (chan)]
     (go-loop []
       (let [[v c] (as/alts! chs)]
         (cond
           (nil? v) (close! out)
-          (pred? v) (do (>! out v) (close! out))
-          :else (do (>! out v)
-                  (recur)))))
+          (not (filter-pred? v)) (recur)
+          (end-pred? v) (do (>! out v) (close! out))
+          :else (do (>! out v) (recur)))))
     out))
 
+;; it will be common for the result chan to be filtered by an id
 (defn get-result
   ([result-chan]
    (get-result result-chan 3000))
   ([result-chan tmout]
-   (as/into [] (async-take-upto done? result-chan (timeout tmout)))))
+   (as/into [] (async-take-upto #(do % true) done? result-chan (timeout tmout)))))
+
+(defn get-filtered-result
+  ([pred result-chan]
+   (get-filtered-result pred result-chan 3000))
+  ([pred result-chan tmout]
+   (as/into [] (async-take-upto pred done? result-chan (timeout tmout)))))
 
 #_ (<!! (get-result (let [ch (chan)]
                 (future (do
