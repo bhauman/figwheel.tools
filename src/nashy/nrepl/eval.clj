@@ -74,7 +74,7 @@
 (defmethod process-eval-out-message ::interrupt-response
   [state {:keys [::nrepl-message ::interrupt-status]}]
   {::send [(-> (select-keys nrepl-message [:interrupt-id])
-               (assoc :status interrupt-status))]
+               (assoc :status ["done" interrupt-status]))]
    ::nrepl-message nrepl-message})
 
 (defn interrupt-status [eval-out-msg running-nrepl-msg]
@@ -114,7 +114,7 @@
                                             eval-out) 
                                           interrupt-chan])]
       (do
-        (prn :running )
+        (prn :running eval-out-msg)
         (condp = ch
           
           eval-out
@@ -132,16 +132,36 @@
                   {:type ::interrupt-response
                    ::interrupt-status int-status
                    ::nrepl-message eval-out-msg})
-            (-->! out state
-                  {:type ::done
-                   ::nrepl-message eval-out-msg})
             (if (= int-status "interrupted")
               ::interrupted
               (recur)))))
       ;; on close we are killed
       ::killed)))
 
-(defn handle-all-evals [{:keys [last-eval-msg] :as state} out nrepl-eval-msg]
+
+(defn drain-eval-out-chan [eval-out]
+  (let [tmout (timeout 10)]
+    (go-loop [res []]
+        (let [[v ch] (as/alts! [eval-out tmout])]
+          (if (or (nil? v) (= tmout ch))
+            res 
+            (recur (conj res v)))))))
+
+(defn process-latent-eval-out-message! [{:keys [last-eval-msg] :as state} out msg]
+  (prn :process-latent msg)
+  (-->! out state
+        (->> (assoc @last-eval-msg :latent-eval-out true)
+             (assoc msg ::nrepl-message))))
+
+(defn process-latent-eval-out-messages! [state out msgs]
+  ;; only forward output for interrupted evaluations
+  (doseq [msg (filter #(-> % :type :nashy.output-capture/output) msgs)]
+    (process-latent-eval-out-message! state out msg)))
+
+(defn handle-all-evals [{:keys [last-eval-msg eval-out] :as state} out nrepl-eval-msg]
+  ;; we haven't evaluated anything yet so if there are values waiting in the
+  ;; out channel we need to get rid of them
+  (process-latent-eval-out-messages! state out (<!! (drain-eval-out-chan eval-out)))
   (let [parsed-forms (utils/read-forms (:code nrepl-eval-msg))]
     (go-loop [[parsed-form & xs] parsed-forms]
       (prn :parsed-form parsed-form)
@@ -177,6 +197,7 @@
   (close! eval-out)
   (close! interrupt-chan))
 
+
 (defn eval-handler [in {:keys [eval-out last-eval-msg interrupt-chan] :as state}]
   (let [out (chan)]
     (go-loop []
@@ -192,9 +213,7 @@
             ;; we add a sentinal flag below to help us reason about the behavior of the
             ;; system during dev and test
             eval-out
-            (-->! out state
-                  (->> (assoc @last-eval-msg :bypass-sentinal true)
-                       (assoc v ::nrepl-message)))
+            (process-latent-eval-out-message! state out v)
             ;; when interupt comes here we are waiting for input and thus idly accepting
             ;; new eval requests
             interrupt-chan

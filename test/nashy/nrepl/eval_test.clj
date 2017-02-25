@@ -42,15 +42,12 @@
 (defn msg [& data] (apply assoc (msg-base) data))
 
 (defn evaluate [msg & [timeout]]
-  (prn :eval msg)
   (as/>!! (:input-chan *evaluator*) msg)
   (let [out (<!! (ne/get-filtered-result
-        #(= (:id msg) (:id (:nashy.nrepl.eval/nrepl-message %)))
-        *result*
-        10000))]
-    (prn :out out)
-    out)
-  )
+                  #(= (:id msg) (:id (:nashy.nrepl.eval/nrepl-message %)))
+                  *result*
+                  10000))]
+    out))
 
 (defn assert-resp= [msg-map expected-res]
   (let [resp (evaluate msg-map)]
@@ -330,20 +327,37 @@
   (assert-resp= (msg :op "interrupt")
                 '([{:status "session-idle"}] [{:status "done"}])))
 
-(deftest interrupt-when-blocking
-  #_(testing "missmatched id"
-    (try
-      (reset! ne/*simulate-blocking-eval true)
-      ;; this blocks
-      (as/>!! (:input-chan *evaluator*) (msg :op "eval" :code "(+ 1 2)"))
-      (assert-resp= (msg :op "interrupt")
-                    '([{:status "interrupted"}] [{:status "done"}]))
-      
-      (finally
-        (reset! ne/*simulate-blocking-eval false)))
+(deftest interrupt-without-id
+  (try
+    (reset! ne/*simulate-blocking-eval true)
+    ;; this blocks
+    (as/>!! (:input-chan *evaluator*) (msg :op "eval" :code "(+ 1 665)"))
+    (assert-resp= (msg :op "interrupt")
+                    '([{:status ["done" "interrupted"]}]))
+    
+    (finally
+      (reset! ne/*simulate-blocking-eval false))))
 
-    )
+(deftest interrupt-with-id
+  (try
+    (reset! ne/*simulate-blocking-eval true)
+    ;; this blocks
+    (let [m (msg :op "eval" :code "(+ 1 77)")]
+      (as/>!! (:input-chan *evaluator*) m)
+      (assert-resp= (msg :op "interrupt" :interrupt-id (:id m))
+                    `([{:status ["done" "interrupted"]
+                        :interrupt-id ~(:id m)}])))
+    (finally
+      (reset! ne/*simulate-blocking-eval false))))
 
-  
-
-  )
+(deftest interrupt-with-bad-interrupt-id
+  (try
+    (reset! ne/*simulate-blocking-eval true)
+    ;; this blocks
+    (let [m (msg :op "eval" :code "(+ 1 88)")]
+      (as/>!! (:input-chan *evaluator*) m)
+      (assert-resp= (msg :op "interrupt" :interrupt-id "doesnotmatch")
+                    `([{:status ["done" "interrupt-id-mismatch"]
+                        :interrupt-id "doesnotmatch"}])))
+    (finally
+      (reset! ne/*simulate-blocking-eval false))))
