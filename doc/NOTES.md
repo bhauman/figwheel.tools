@@ -187,3 +187,11 @@ returns {:value # :out # :err # :warns # :except #}
     eval(env code) 
 
 
+# cljs-environment initialization
+
+session can choose it's cljs-environment
+
+initially let's bas this off of a config
+
+
+

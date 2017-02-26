@@ -59,6 +59,8 @@
     (stop-server :cljs)
     res))
 
+
+
 (comment
 
   (:port (:cljs @state-atom))
@@ -76,7 +78,6 @@
   
   (msg* {:op "ls-sessions"})
   (msg* {:op "eval" :code "1" :session sess-id})
-
   
   (msg* {:op "eval" :code "(+ 1 3) 1 4 3 (prn 2) 1" :session sess-id})
 
@@ -87,15 +88,10 @@
 
   (msg* {:op "eval" :code "(defn asdf [] 1)" :session sess-id})
   
-  
-  
   (stop-server :cljs)
 
   
   )
-
-
-
 
 
 (comment
@@ -104,6 +100,7 @@
   (in-nrepl {:op :eval :code "(prn 5)"})
   (in-nrepl {:op :describe :verbose? 1})  
 
+  (in-nrepl {:op :interrupt})
 
   
   

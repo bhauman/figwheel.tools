@@ -1,4 +1,4 @@
-(ns nashy.output-capture
+(ns cljs.tools.repl.io.print-writer
   (:import
    (java.nio CharBuffer)
    (java.io Writer PrintWriter)))

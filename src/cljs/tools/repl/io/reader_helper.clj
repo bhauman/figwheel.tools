@@ -1,6 +1,6 @@
-(ns nashy.reader-helper
+(ns cljs.tools.repl.io.reader-helper
   (:gen-class
-   :name nashy.ReaderHelper
+   :name cljs.tools.repl.io.ReaderHelper
    :extends java.io.Reader
    :state state
    :init init

@@ -1,4 +1,4 @@
-(defproject nashy "0.1.0-SNAPSHOT"
+(defproject cljs.tools "0.1.0-SNAPSHOT"
   :description "FIXME: write this!"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
@@ -18,7 +18,7 @@
 
   :source-paths ["src"]
 
-  :aot [nashy.reader-helper]
+  :aot [cljs.tools.repl.io.reader-helper]
   
   :clean-targets ^{:protect false} ["resources/public/js/compiled" "target"]
 
@@ -100,7 +100,7 @@
                                   [figwheel-sidecar "0.5.9"]
                                   [com.cemerick/piggieback "0.2.1"]]
                    ;; need to add dev source path here to get user.clj loaded
-                   :source-paths ["src" "dev"]
+                   :source-paths ["src" "dev" "cljs-src"]
                    ;; for CIDER
                    ;; :plugins [[cider/cider-nrepl "0.12.0"]]
                    :repl-options {;:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]

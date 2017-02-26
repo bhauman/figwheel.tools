@@ -1,15 +1,7 @@
-(ns nashy.utils
+(ns cljs.tools.repl.io.cljs-forms
   (:require
-   [clojure.string :as string]
    [clojure.tools.reader :as r]
    [clojure.tools.reader.reader-types :as rtyp]))
-
-(defn format-line-column [{:keys [line column]}]
-  (->> (cond-> []
-         line   (conj (str "line " line))
-         column (conj (str "column " column)))
-       (interpose ", ")
-       (string/join "")))
 
 (defn read-identity [tag form]
   [::reader-tag tag form])

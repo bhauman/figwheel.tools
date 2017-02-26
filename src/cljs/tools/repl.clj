@@ -1,14 +1,12 @@
-(ns nashy.repl
+(ns cljs.tools.repl
   (:require
-   [nashy.output-capture :refer [print-writer]]
+   [cljs.analyzer]
    [cljs.repl]
-   [cljs.analyzer]
-   [clojure.java.io :as io]
    [cljs.repl.nashorn :as nash]
-   [cljs.analyzer]
-   [figwheel-sidecar.repl-api :as f])
+   [cljs.tools.repl.io.print-writer :refer [print-writer]]
+   [clojure.java.io :as io])
   (:import
-   [nashy ReaderHelper]))
+   [cljs.tools.repl.io ReaderHelper]))
 
 (defn extract-warning-data [warning-type env extra]
   (when (warning-type cljs.analyzer/*cljs-warnings*)

@@ -1,11 +1,11 @@
-(ns nashy.nrepl.eval-test
+(ns cljs.tools.nrepl.eval-test
   (:require
-   [nashy.nrepl.eval :as ne]
+   [cljs.tools.nrepl.eval :as ne]
    [cljs.repl.nashorn :as nash]
    [clojure.core.async :refer [put! chan <!!] :as as]
    [clojure.test :refer :all]))
 
-(def ^:dynamic *result* nil #_(atom []))
+(def ^:dynamic *result* nil)
 
 (def ^:dynamic *evaluator* nil)
 
@@ -44,7 +44,7 @@
 (defn evaluate [msg & [timeout]]
   (as/>!! (:input-chan *evaluator*) msg)
   (let [out (<!! (ne/get-filtered-result
-                  #(= (:id msg) (:id (:nashy.nrepl.eval/nrepl-message %)))
+                  #(= (:id msg) (:id (:cljs.tools.nrepl.eval/nrepl-message %)))
                   *result*
                   10000))]
     out))
@@ -53,9 +53,15 @@
   (let [resp (evaluate msg-map)]
     (is (every?
          #(= msg-map %)
-         (map :nashy.nrepl.eval/nrepl-message resp)))
-    (is (= (map :nashy.nrepl.eval/send resp)
+         (map :cljs.tools.nrepl.eval/nrepl-message resp)))
+    (is (= (map :cljs.tools.nrepl.eval/send resp)
            expected-res))))
+
+(deftest simple-test
+    (testing "simple eval"
+      (assert-resp= (msg :op "eval" :code "1")
+                  '[[{:source "1", :value "1", :printed-value 1, :ns cljs.user}]
+                    [{:status "done"}]])))
 
 
 (deftest eval-test
@@ -325,7 +331,7 @@
 
 (deftest interrupt-when-idle 
   (assert-resp= (msg :op "interrupt")
-                '([{:status "session-idle"}] [{:status "done"}])))
+                '([{:status ["done" "session-idle"]}])))
 
 (deftest interrupt-without-id
   (try
@@ -358,6 +364,8 @@
       (as/>!! (:input-chan *evaluator*) m)
       (assert-resp= (msg :op "interrupt" :interrupt-id "doesnotmatch")
                     `([{:status ["done" "interrupt-id-mismatch"]
-                        :interrupt-id "doesnotmatch"}])))
+                        :interrupt-id "doesnotmatch"}]))
+      (assert-resp= (msg :op "interrupt")
+                    `([{:status ["done" "interrupted"]}])))
     (finally
       (reset! ne/*simulate-blocking-eval false))))

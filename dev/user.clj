@@ -5,13 +5,7 @@
    [clojure.tools.reader :as treader]
    [clojure.tools.reader.reader-types :as readers]
    [clojure.core.async :as as :refer [put! chan <!!]]
-   [figwheel-sidecar.repl-api :as f]
-   [nashy.reader-helper])
-  (:import
-   #_[nashy QBReader]
-   #_[nashy ReaderHelper]))
-
-
+   [figwheel-sidecar.repl-api :as f]))
 
 ;; user is a namespace that the Clojure runtime looks for and
 ;; loads if its available
@@ -55,22 +49,3 @@
 ;; making a repl on a thread so that we can have fast repl evaluation
 
 
-(comment
-(let [input (input-reader)
-      pbr (to-logging-pb-reader (:reader input))]
-  (prn input)
-  #_(input-write input "     (list 1\n 2 3)\n")
-  #_(cljs.repl/skip-whitespace pbr)
-  #_(treader/read {:read-cond :allow :features #{:cljs}} pbr))
-
-  (create-writer)
-  
-  
-  (fig-start)
-  (def repler (test-repl))
-
-  (repl-eval repler "       \n     \n")
-  (repl-eval repler "1")
-  (repl-eval repler "\n:cljs/quit")
-  (kill-repl repler)
-  )
