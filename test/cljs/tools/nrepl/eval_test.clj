@@ -365,6 +365,7 @@
       (assert-resp= (msg :op "interrupt" :interrupt-id "doesnotmatch")
                     `([{:status ["done" "interrupt-id-mismatch"]
                         :interrupt-id "doesnotmatch"}]))
+      ;; still blocked on empty test channel so interrupt for real
       (assert-resp= (msg :op "interrupt")
                     `([{:status ["done" "interrupted"]}])))
     (finally
