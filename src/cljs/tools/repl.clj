@@ -3,22 +3,11 @@
    [cljs.analyzer]
    [cljs.repl]
    [cljs.repl.nashorn :as nash]
+   [cljs.tools.repl.utils :as utils]
    [cljs.tools.repl.io.print-writer :refer [print-writer]]
    [clojure.java.io :as io])
   (:import
    [cljs.tools.repl.io ReaderHelper]))
-
-(defn extract-warning-data [warning-type env extra]
-  (when (warning-type cljs.analyzer/*cljs-warnings*)
-    (when-let [s (cljs.analyzer/error-message warning-type extra)]
-      {:line   (:line env)
-       :column (:column env)
-       :ns     (-> env :ns :name)
-       :file (if (= (-> env :ns :name) 'cljs.core)
-               "cljs/core.cljs"
-               cljs.analyzer/*cljs-file*)
-       :message s
-       :extra   extra})))
 
 (defn handle-warnings-and-output-eval [out err warning-handler]
   (fn evaler*
@@ -61,7 +50,7 @@
                                 (merge
                                  {:form form
                                   :type ::eval-warning}
-                                 (extract-warning-data warning-type env extra))))))
+                                 (utils/extract-warning-data warning-type env extra))))))
                     :print
                     (fn [result & rest]
                       (flush-out)

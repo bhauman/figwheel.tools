@@ -412,7 +412,7 @@
       (h msg))))
 
 (mid/set-descriptor! #'cljs-eval
- {:requires #{"clone" "close"}
+ {:requires #{"clone" "close" "ls-build-configs"}
   :expects #{}
   :handles {"eval"
             {:doc "Evaluates code."
