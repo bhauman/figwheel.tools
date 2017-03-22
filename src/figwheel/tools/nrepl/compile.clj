@@ -1,7 +1,7 @@
-(ns cljs.tools.nrepl.compile
+(ns figwheel.tools.nrepl.compile
   (:require
-   [cljs.tools.repl.utils :as utils]
-   [cljs.tools.repl.io.print-writer :refer [print-writer]]
+   [figwheel.tools.repl.utils :as utils]
+   [figwheel.tools.repl.io.print-writer :refer [print-writer]]
    [cljs.build.api :as bapi]))
 
 ;; TODO include error and warning parsing code

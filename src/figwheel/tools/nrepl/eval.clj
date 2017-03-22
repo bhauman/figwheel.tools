@@ -1,8 +1,8 @@
-(ns cljs.tools.nrepl.eval
+(ns figwheel.tools.nrepl.eval
   (:require
-   [cljs.tools.repl.utils :as utils]
-   [cljs.tools.repl.io.cljs-forms :refer [read-forms]]
-   [cljs.tools.repl :refer [thread-cljs-repl repl-running? repl-eval kill-repl]]
+   [figwheel.tools.repl.utils :as utils]
+   [figwheel.tools.repl.io.cljs-forms :refer [read-forms]]
+   [figwheel.tools.repl :refer [thread-cljs-repl repl-running? repl-eval kill-repl]]
    [clojure.tools.nrepl.misc :as nrepl-misc]
    [cljs.repl.nashorn :as nash]
    [clojure.core.async :refer [chan put! go go-loop <!! <! >! >!! close! take! timeout] :as as]
@@ -13,7 +13,6 @@
 
 ;; middleware development here
 
-(def ^:dynamic *initialize-wait-time* 5000)
 
 (def ^:dynamic *msg* nil)
 
@@ -27,7 +26,7 @@
 (defn -->! [out state msg]
   (put! out (process-eval-out-message state msg)))
 
-(defmethod process-eval-out-message :cljs.tools.repl/eval-value [state {:keys [value] :as msg}]
+(defmethod process-eval-out-message :figwheel.tools.repl/eval-value [state {:keys [value] :as msg}]
   (-> (select-keys msg [::nrepl-message])
       (assoc ::send [(merge
                      (select-keys (::parsed-form msg)
@@ -38,7 +37,7 @@
   (-> (select-keys msg [::nrepl-message])
       (assoc ::send [{:status "done"}])))
 
-(defmethod process-eval-out-message :cljs.tools.repl.io.print-writer/output
+(defmethod process-eval-out-message :figwheel.tools.repl.io.print-writer/output
   [state {:keys [::nrepl-message channel text]}]
   {::send [{channel text}]
    ::nrepl-message nrepl-message})
@@ -50,7 +49,7 @@
            {:err (str (.getMessage exception) "\n")}]
    ::nrepl-message nrepl-message})
 
-(defmethod process-eval-out-message :cljs.tools.repl/eval-warning
+(defmethod process-eval-out-message :figwheel.tools.repl/eval-warning
   [state {:keys [::nrepl-message ::parsed-form message] :as msg}]
   (let [warning-msg (merge
                      (merge-with #(+ %1 (dec %2))
@@ -62,7 +61,7 @@
     {::send [{:err (str message "\n")} warning-msg]
      ::nrepl-message nrepl-message}))
 
-(defmethod process-eval-out-message :cljs.tools.repl/eval-error
+(defmethod process-eval-out-message :figwheel.tools.repl/eval-error
   [state {:keys [::nrepl-message exception] :as msg}]
   (prn :exception msg)
   {::send [(cond-> {:status "eval-error"}
@@ -124,7 +123,7 @@
                   (assoc eval-out-msg
                          ::parsed-form parsed-form
                          ::nrepl-message nrepl-eval-msg))
-            (when-not (#{:cljs.tools.repl/eval-value :cljs.tools.repl/eval-error} (:type eval-out-msg))
+            (when-not (#{:figwheel.tools.repl/eval-value :figwheel.tools.repl/eval-error} (:type eval-out-msg))
               (recur)))
           
           interrupt-chan
@@ -156,7 +155,7 @@
 
 (defn process-latent-eval-out-messages! [state out msgs]
   ;; only forward output for interrupted evaluations
-  (doseq [msg (filter #(-> % :type :cljs.tools.repl.io.print-writer/output) msgs)]
+  (doseq [msg (filter #(-> % :type :figwheel.tools.repl.io.print-writer/output) msgs)]
     (process-latent-eval-out-message! state out msg)))
 
 (defn handle-all-evals [{:keys [last-eval-msg eval-out] :as state} out nrepl-eval-msg]
@@ -227,7 +226,7 @@
     out))
 
 (defn done? [sq]
-  (let [st (->> sq :cljs.tools.nrepl.eval/send last :status)]
+  (let [st (->> sq :figwheel.tools.nrepl.eval/send last :status)]
     (or (= st "done")
         (first (filter #(= % "done") st)))))
 
@@ -266,14 +265,12 @@
               500))
 
 ;; TODO
-;; tests for "interrupt" which should return done
 ;; tests for kill
 
 ;; add options
 ;; add options validation to thread-repl
 ;; rename this fn
 ;; perhaps take an in and return an out
-
 
 (defn evaluate-cljs-new [forward-handler repl-env-thunk]
   (when-not repl-env-thunk

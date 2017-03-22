@@ -1,4 +1,4 @@
-(ns cljs.tools.repl.io.cljs-forms
+(ns figwheel.tools.repl.io.cljs-forms
   (:require
    [clojure.tools.reader :as r]
    [clojure.tools.reader.reader-types :as rtyp]))

@@ -1,4 +1,4 @@
-(defproject cljs.tools "0.1.0-SNAPSHOT"
+(defproject figwheel.tools "0.1.0-SNAPSHOT"
   :description "FIXME: write this!"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
@@ -8,8 +8,8 @@
 
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/clojurescript "1.9.229"]
-                 [rhizome "0.2.7"]
                  [org.clojure/tools.nrepl "0.2.12"]
+                 [rhizome "0.2.7"]
                  [org.clojure/core.async "0.2.395"
                   :exclusions [org.clojure/tools.reader]]]
 
@@ -18,7 +18,7 @@
 
   :source-paths ["src"]
 
-  :aot [cljs.tools.repl.io.reader-helper]
+  :aot [figwheel.tools.repl.io.reader-helper]
   
   :clean-targets ^{:protect false} ["resources/public/js/compiled" "target"]
 
@@ -98,12 +98,13 @@
 
   :profiles {:dev {:dependencies [[binaryage/devtools "0.9.0"]
                                   [figwheel-sidecar "0.5.9"]
+
                                   [com.cemerick/piggieback "0.2.1"]]
                    ;; need to add dev source path here to get user.clj loaded
                    :source-paths ["src" "dev" "cljs-src"]
                    ;; for CIDER
                    ;; :plugins [[cider/cider-nrepl "0.12.0"]]
-                   :repl-options {;:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]
+                   #_:repl-options #_{;:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]
                                   :skip-default-init true
                                   :custom-eval '(println "Welcome Bruce!!!")}}}
 

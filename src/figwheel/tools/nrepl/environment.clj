@@ -1,4 +1,4 @@
-(ns cljs.tools.nrepl.environment
+(ns figwheel.tools.nrepl.environment
   (:require
    [cljs.repl.nashorn :as nash]
    [cljs.env :as env]
@@ -21,7 +21,7 @@
   #(nash/repl-env* (select-keys (:compiler build-config) [:output-to :output-dir])))
 
 (def sample-config
-  '{cljs.tools.nrepl.environment
+  '{figwheel.tools.nrepl.environment
     {:default-build-id :dev
      :builds {:dev {:source-paths ["src"]
                     :repl-env :nashorn
@@ -36,7 +36,7 @@
                               }}}}})
 
 (defn get-build-config [session build-id]
-  (when-let [build-config (get-in @session [#'*config* 'cljs.tools.nrepl.environment :builds build-id])]
+  (when-let [build-config (get-in @session [#'*config* 'figwheel.tools.nrepl.environment :builds build-id])]
     (assoc build-id :id build-id)))
 
 (defn default-build-id [config]
@@ -52,7 +52,7 @@
 
 (defn switch-to-build-id! [session build-id]
   (let [build-id
-        (default-build-id (get-in @session [#'*config* 'cljs.tools.nrepl.environment]))
+        (default-build-id (get-in @session [#'*config* 'figwheel.tools.nrepl.environment]))
         build-config (get-build-config session build-id)]
     (set-build-config! session build-config)))
 
@@ -62,7 +62,7 @@
       (swap! @session assoc #'*config* cfg)))
   (when-not (@session #'*cljs-build-config*)
     (let [build-id
-          (default-build-id (get-in @session [#'*config* 'cljs.tools.nrepl.environment]))]
+          (default-build-id (get-in @session [#'*config* 'figwheel.tools.nrepl.environment]))]
       (switch-to-build-id! build-id))))
 
 (defn send [orig-msg msg]
@@ -72,7 +72,7 @@
 (defn ls-build-configs [session nrepl-msg]
   (send nrepl-msg {:status ["done"]
                    :build-configs
-                   (get-in @session [#'*config* 'cljs.tools.nrepl.environment :builds])}))
+                   (get-in @session [#'*config* 'figwheel.tools.nrepl.environment :builds])}))
 
 (defn current-build-config [session nrepl-msg]
   (send nrepl-msg

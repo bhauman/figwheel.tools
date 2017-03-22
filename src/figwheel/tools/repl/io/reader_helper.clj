@@ -1,6 +1,6 @@
-(ns cljs.tools.repl.io.reader-helper
+(ns figwheel.tools.repl.io.reader-helper
   (:gen-class
-   :name cljs.tools.repl.io.ReaderHelper
+   :name figwheel.tools.repl.io.ReaderHelper
    :extends java.io.Reader
    :state state
    :init init

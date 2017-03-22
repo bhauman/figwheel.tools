@@ -1,6 +1,6 @@
-(ns cljs.tools.nrepl.eval-test
+(ns figwheel.tools.nrepl.eval-test
   (:require
-   [cljs.tools.nrepl.eval :as ne]
+   [figwheel.tools.nrepl.eval :as ne]
    [cljs.repl.nashorn :as nash]
    [clojure.core.async :refer [put! chan <!!] :as as]
    [clojure.test :refer :all]))
@@ -44,7 +44,7 @@
 (defn evaluate [msg & [timeout]]
   (as/>!! (:input-chan *evaluator*) msg)
   (let [out (<!! (ne/get-filtered-result
-                  #(= (:id msg) (:id (:cljs.tools.nrepl.eval/nrepl-message %)))
+                  #(= (:id msg) (:id (:figwheel.tools.nrepl.eval/nrepl-message %)))
                   *result*
                   10000))]
     out))
@@ -53,8 +53,8 @@
   (let [resp (evaluate msg-map)]
     (is (every?
          #(= msg-map %)
-         (map :cljs.tools.nrepl.eval/nrepl-message resp)))
-    (is (= (map :cljs.tools.nrepl.eval/send resp)
+         (map :figwheel.tools.nrepl.eval/nrepl-message resp)))
+    (is (= (map :figwheel.tools.nrepl.eval/send resp)
            expected-res))))
 
 (deftest simple-test

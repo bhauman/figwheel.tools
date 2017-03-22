@@ -1,13 +1,13 @@
-(ns cljs.tools.repl
+(ns figwheel.tools.repl
   (:require
    [cljs.analyzer]
    [cljs.repl]
    [cljs.repl.nashorn :as nash]
-   [cljs.tools.repl.utils :as utils]
-   [cljs.tools.repl.io.print-writer :refer [print-writer]]
+   [figwheel.tools.repl.utils :as utils]
+   [figwheel.tools.repl.io.print-writer :refer [print-writer]]
    [clojure.java.io :as io])
   (:import
-   [cljs.tools.repl.io ReaderHelper]))
+   [figwheel.tools.repl.io ReaderHelper]))
 
 (defn handle-warnings-and-output-eval [out err warning-handler]
   (fn evaler*

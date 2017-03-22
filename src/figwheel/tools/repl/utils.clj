@@ -1,4 +1,4 @@
-(ns cljs.tools.repl.utils
+(ns figwheel.tools.repl.utils
   (:require
    [clojure.string :as string]))
 
