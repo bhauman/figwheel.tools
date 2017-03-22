@@ -31,44 +31,57 @@ read character sequence"
   (let [bq (java.util.concurrent.LinkedBlockingQueue.)
         closed (atom false)
         lock-obj (Object.)]
-    (proxy [java.io.Reader java.lang.Appendable] []
-      (read
-        ([]
-         (if @closed -1
-           (let [c (.take bq)]
-             (if (integer? c) c (int c)))))
-        ([x]
-         (if @closed
-           -1
-           (read-helper bq x 0 (count x))))
-        ([^chars out-array off maxlen]
-         (if @closed
-           -1
-           (read-helper bq out-array off maxlen))))
-      (close []
-        (reset! closed true)
-        (.offer bq -1))
-      (append
-        ([c]
-         (do
-           (when-not @closed
-             (locking lock-obj
-                 (cond
-                   (char? c) (.offer bq c)
-                   (instance? java.lang.CharSequence c) (doseq [ch c] (.offer bq ch)))))
-           this))
-        ([^java.lang.CharSequence csq start end]
-         (do
-           (when-not @closed
-             (locking lock-obj
-               (doseq [ch (str (.subSequence csq start end))]
-                 (.offer bq ch))))
-           this))))))
+    {:bq bq
+     :closed closed
+     :appender-reader
+     (proxy [java.io.Reader java.lang.Appendable] []
+       (read
+         ([]
+          (if @closed -1
+              (let [c (.take bq)]
+                (if (integer? c) c (int c)))))
+         ([x]
+          (if @closed
+            -1
+            (read-helper bq x 0 (count x))))
+         ([^chars out-array off maxlen]
+          (if @closed
+            -1
+            (read-helper bq out-array off maxlen))))
+       (close []
+         (reset! closed true)
+         (.offer bq -1))
+       (append
+         ([c]
+          (do
+            (when-not @closed
+              (locking lock-obj
+                (cond
+                  (char? c) (.offer bq c)
+                  (instance? java.lang.CharSequence c) (doseq [ch c] (.offer bq ch)))))
+            this))
+         ([^java.lang.CharSequence csq start end]
+          (do
+            (when-not @closed
+              (locking lock-obj
+                (doseq [ch (str (.subSequence csq start end))]
+                  (.offer bq ch))))
+            this))))}))
 
+(defn reader-closed? [app-read]
+  @(:closed app-read))
+
+(defn reader-empty? [app-read]
+  (zero? (.size (:bq app-read))))
+
+(defn reader-append [app-read s]
+  (.append (:appender-reader app-read) s))
+
+(def get-reader :appender-reader)
 
 
 (comment
-  (let [wr (appender-reader)]
+  (let [wr (:appender-reader (appender-reader))]
     (.append wr \c)
     (.append wr \c)
     (.append wr "hello")

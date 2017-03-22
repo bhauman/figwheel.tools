@@ -4,6 +4,7 @@
    [cljs.repl]
    [cljs.repl.nashorn :as nash]
    [figwheel.tools.repl.utils :as utils]
+   [figwheel.tools.repl.io.appender-reader :refer [appender-reader] :as app-read]
    [figwheel.tools.repl.io.print-writer :refer [print-writer]]
    [clojure.java.io :as io])
   (:import
@@ -21,7 +22,7 @@
        (#'cljs.repl/eval-cljs repl-env env form opts)))))
 
 (defn thread-cljs-repl [repl-env-thunk handler]
-  (let [writer-reader (ReaderHelper.)
+  (let [writer-reader (appender-reader)
         out (print-writer :out handler)
         err (print-writer :err handler)
         flush-out (fn [] (.flush err) (.flush out))
@@ -31,7 +32,7 @@
      (let [t (Thread.
               (binding [*out* out
                         *err* err
-                        *in* writer-reader]
+                        *in* (app-read/get-reader writer-reader)]
                 (bound-fn []
                   (cljs.repl/repl*
                    ;; this is a thunk because certain repls like nashorn
@@ -70,10 +71,10 @@
      :writer-reader writer-reader}))
 
 (defn repl-running? [{:keys [writer-reader]}]
-  (not @(:closed (.state writer-reader))))
+  (not (app-read/reader-closed? writer-reader)))
 
 (defn empty-read-input? [thread-repl]
-  (zero? (.size (:bq (.state (:writer-reader thread-repl))))))
+  (app-read/reader-empty? (:writer-reader thread-repl)))
 
 (defn repl-eval [thread-repl s]
   ;; so given that each form is a valid single form
@@ -90,7 +91,7 @@
           (Thread/sleep 100)
           (recur))
         :else
-        (.write (:writer-reader thread-repl) (str s "\n"))))))
+        (app-read/reader-append (:writer-reader thread-repl) (str s "\n"))))))
 
 (defn kill-repl [thread-repl]
   ;; this will close the repl
@@ -112,6 +113,7 @@
   
   (def repler (thread-cljs-repl f/repl-env
                                 #(swap! output conj %)))
+  
   (def repler (thread-cljs-repl nash/repl-env
                                 #(swap! output conj %)))
 
