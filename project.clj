@@ -18,8 +18,6 @@
 
   :source-paths ["src"]
 
-  :aot [figwheel.tools.repl.io.reader-helper]
-  
   :clean-targets ^{:protect false} ["resources/public/js/compiled" "target"]
 
   :cljsbuild {:builds
