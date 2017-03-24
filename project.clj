@@ -9,7 +9,7 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/clojurescript "1.9.229"]
                  [org.clojure/tools.nrepl "0.2.12"]
-                 [rhizome "0.2.7"]
+                 [http-kit "2.2.0"]
                  [org.clojure/core.async "0.2.395"
                   :exclusions [org.clojure/tools.reader]]]
 
@@ -27,14 +27,14 @@
                 ;; the presence of a :figwheel configuration here
                 ;; will cause figwheel to inject the figwheel client
                 ;; into your build
-                :figwheel {:on-jsload "nashy.core/on-js-reload"
+                :figwheel {; :on-jsload ".core/on-js-reload"
                            ;; :open-urls will pop open your application
                            ;; in the default browser once Figwheel has
                            ;; started and complied your application.
                            ;; Comment this out once it no longer serves you.
                            :open-urls ["http://localhost:3449/index.html"]}
 
-                :compiler {:main nashy.core
+                :compiler {:main example.core
                            :asset-path "js/compiled/out"
                            :output-to "resources/public/js/compiled/nashy.js"
                            :output-dir "resources/public/js/compiled/out"
@@ -45,7 +45,7 @@
                ;; This next build is an compressed minified build for
                ;; production. You can build this with:
                ;; lein cljsbuild once min
-               {:id "min"
+               #_{:id "min"
                 :source-paths ["src"]
                 :compiler {:output-to "resources/public/js/compiled/nashy.js"
                            :main nashy.core
@@ -96,7 +96,7 @@
 
   :profiles {:dev {:dependencies [[binaryage/devtools "0.9.0"]
                                   [figwheel-sidecar "0.5.9"]
-
+                                  [rhizome "0.2.7"]
                                   [com.cemerick/piggieback "0.2.1"]]
                    ;; need to add dev source path here to get user.clj loaded
                    :source-paths ["src" "dev" "cljs-src"]

@@ -1,4 +1,4 @@
-(ns nashy.core
+(ns example.core
   (:require ))
 
 (enable-console-print!)
