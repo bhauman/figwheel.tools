@@ -1,19 +1,11 @@
 (ns figwheel.tools.nrepl.eval
   (:require
-   [figwheel.tools.repl.utils :as utils]
+   [figwheel.tools.repl.utils :as utils :refer [log]]
    [figwheel.tools.repl.io.cljs-forms :refer [read-forms]]
    [figwheel.tools.repl :refer [thread-cljs-repl repl-running? repl-eval kill-repl]]
    [clojure.tools.nrepl.misc :as nrepl-misc]
    [clojure.core.async :refer [chan put! go go-loop <!! <! >! >!! close! take! timeout] :as as]
    [clojure.tools.nrepl.transport :as transport]))
-
-#_ (remove-ns 'figwheel.tools.nrepl.eval)
-
-(def ^:dynamic *debug* true)
-
-(defn log [& args]
-  (when *debug*
-    (apply prn args)))
 
 ;; for testing purposes
 (def *simulate-blocking-eval (atom false))

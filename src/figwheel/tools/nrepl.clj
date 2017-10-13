@@ -6,9 +6,9 @@
    [clojure.tools.nrepl.middleware :as mid]
    [clojure.tools.nrepl.misc :as nrepl-misc]
    [clojure.tools.nrepl.transport :as transport]
-   [figwheel.tools.nrepl.eval :refer [log] :as ne]))
+   [figwheel.tools.repl.utils :refer [log]]
+   [figwheel.tools.nrepl.eval :as ne]))
 
-(def ^:dynamic *msg* nil)
 (def ^:dynamic *cljs-evaluator* nil)
 (def ^:dynamic *original-ns* nil)
 
@@ -61,8 +61,7 @@
           (h msg)))
       (do
         (when-not (contains? @session #'*cljs-evaluator*)
-          (swap! session (partial merge {;#'*msg* *msg*
-                                         #'*original-ns* *original-ns*
+          (swap! session (partial merge {#'*original-ns* *original-ns*
                                          #'*cljs-evaluator* *cljs-evaluator*})))
         (h msg)))))
 
@@ -103,27 +102,3 @@
       ;; "kill-eval"
       (h msg))))
 
-#_(mid/set-descriptor! #'cljs-eval
- {:requires #{"clone" "close"}
-  :expects #{}
-  :handles {"eval"
-            {:doc "Evaluates code."
-             :requires {"code" "The code to be evaluated."
-                        "session" "The ID of the session within which to evaluate the code."}
-             :optional {"id" "An opaque message ID that will be included in responses related to the evaluation, and which may be used to restrict the scope of a later \"interrupt\" operation."
-                        "eval" "A fully-qualified symbol naming a var whose function value will be used to evaluate [code], instead of `clojure.core/eval` (the default)."
-                        "file" "The path to the file containing [code]. `clojure.core/*file*` will be bound to this."
-                        "line" "The line number in [file] at which [code] starts."
-                        "column" "The column number in [file] at which [code] starts."}
-             :returns {"ns" "*ns*, after successful evaluation of `code`."
-                       "values" "The result of evaluating `code`, often `read`able. This printing is provided by the `pr-values` middleware, and could theoretically be customized. Superseded by `ex` and `root-ex` if an exception occurs during evaluation."
-                       "ex" "The type of exception thrown, if any. If present, then `values` will be absent."
-                       "root-ex" "The type of the root exception thrown, if any. If present, then `values` will be absent."}
-             "interrupt"
-             {:doc "Attempts to interrupt some code evaluation."
-              :requires {"session" "The ID of the session used to start the evaluation to be interrupted."}
-              :optional {"interrupt-id" "The opaque message ID sent with the original \"eval\" request."}
-              :returns {"status" "'interrupted' if an evaluation was identified and interruption will be attempted
-'session-idle' if the session is not currently evaluating any code
-'interrupt-id-mismatch' if the session is currently evaluating code sent using a different ID than specified by the \"interrupt-id\" value "}}}}}
- )

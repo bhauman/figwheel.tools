@@ -2,6 +2,12 @@
   (:require
    [clojure.string :as string]))
 
+(def ^:dynamic *debug* false)
+
+(defn log [& args]
+  (when *debug*
+    (apply prn args)))
+
 (defn format-line-column [{:keys [line column]}]
   (->> (cond-> []
          line   (conj (str "line " line))
