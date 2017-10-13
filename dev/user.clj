@@ -5,6 +5,8 @@
    [clojure.tools.reader :as treader]
    [clojure.tools.reader.reader-types :as readers]
    [clojure.core.async :as as :refer [put! chan <!!]]
+   [figwheel.tools.nrepl :as ft]
+   [cljs.repl.nashorn :as nash]   
    [figwheel-sidecar.repl-api :as f]))
 
 ;; user is a namespace that the Clojure runtime looks for and
@@ -23,6 +25,8 @@
 ;; tools.namespace https://github.com/clojure/tools.namespace
 ;; and Component https://github.com/stuartsierra/component
 
+(defn tryit []
+  (ft/cljs-repl nash/repl-env))
 
 (defn fig-start
   "This starts the figwheel server and watch based auto-compiler."

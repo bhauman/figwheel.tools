@@ -92,7 +92,7 @@
   ;; setting up nREPL for Figwheel and ClojureScript dev
   ;; Please see:
   ;; https://github.com/bhauman/lein-figwheel/wiki/Using-the-Figwheel-REPL-within-NRepl
-
+  :repl-options {:nrepl-middleware [figwheel.tools.nrepl/wrap-cljs-repl]}
 
   :profiles {:dev {:dependencies [[binaryage/devtools "0.9.0"]
                                   [figwheel-sidecar "0.5.9"]

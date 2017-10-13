@@ -4,17 +4,16 @@
    [figwheel.tools.repl.io.cljs-forms :refer [read-forms]]
    [figwheel.tools.repl :refer [thread-cljs-repl repl-running? repl-eval kill-repl]]
    [clojure.tools.nrepl.misc :as nrepl-misc]
-   [cljs.repl.nashorn :as nash]
    [clojure.core.async :refer [chan put! go go-loop <!! <! >! >!! close! take! timeout] :as as]
-   [clojure.tools.nrepl.transport :as transport]
-   [clojure.tools.nrepl.middleware :as mid]))
+   [clojure.tools.nrepl.transport :as transport]))
 
-#_ (remove-ns 'nashy.nrepl.eval)
+#_ (remove-ns 'figwheel.tools.nrepl.eval)
 
-;; middleware development here
+(def ^:dynamic *debug* true)
 
-
-(def ^:dynamic *msg* nil)
+(defn log [& args]
+  (when *debug*
+    (apply prn args)))
 
 ;; for testing purposes
 (def *simulate-blocking-eval (atom false))
@@ -63,7 +62,7 @@
 
 (defmethod process-eval-out-message :figwheel.tools.repl/eval-error
   [state {:keys [::nrepl-message exception] :as msg}]
-  (prn :exception msg)
+  (log :exception msg)
   {::send [(cond-> {:status "eval-error"}
              (instance? Exception exception)
              (assoc :ex (-> exception class str)
@@ -106,15 +105,15 @@
 (defn eval-parsed-form [{:keys [last-eval-msg eval-out thread-repl interrupt-chan] :as state}
                         out nrepl-eval-msg parsed-form]
   ;; perhaps do this at the end
-  (prn :handle-eval parsed-form)
+  (log :handle-eval parsed-form)
   (repl-eval thread-repl (:source parsed-form))
   (go-loop []
-    (if-let [[eval-out-msg ch] (as/alts! [(if @*simulate-blocking-eval
+    (let [[eval-out-msg ch] (as/alts! [(if @*simulate-blocking-eval
                                             (chan)
                                             eval-out) 
-                                          interrupt-chan])]
-      (do
-        (prn :running eval-out-msg)
+                                       interrupt-chan])]
+      (log :running eval-out-msg)
+      (if eval-out-msg
         (condp = ch
           
           eval-out
@@ -134,9 +133,9 @@
                    ::nrepl-message eval-out-msg})
             (if (= int-status "interrupted")
               ::interrupted
-              (recur)))))
-      ;; on close we are killed
-      ::killed)))
+              (recur))))
+        ;; on close we are killed
+        ::killed))))
 
 
 (defn drain-eval-out-chan [eval-out]
@@ -148,7 +147,7 @@
             (recur (conj res v)))))))
 
 (defn process-latent-eval-out-message! [{:keys [last-eval-msg] :as state} out msg]
-  (prn :process-latent msg)
+  (log :process-latent msg)
   (-->! out state
         (->> (assoc @last-eval-msg :latent-eval-out true)
              (assoc msg ::nrepl-message))))
@@ -164,22 +163,27 @@
   (process-latent-eval-out-messages! state out (<!! (drain-eval-out-chan eval-out)))
   (let [parsed-forms (read-forms (:code nrepl-eval-msg))]
     (go-loop [[parsed-form & xs] parsed-forms]
-      (prn :parsed-form parsed-form)
+      (log :parsed-form parsed-form)
       (if-not parsed-form
         (do
-          (prn :finished)
+          (log :finished)
           (swap! last-eval-msg #(do % nrepl-eval-msg))
           (-->! out state {:type ::done ::nrepl-message nrepl-eval-msg}))
         (if-not (:exception parsed-form)
           (do
-            (prn :before-handle-eval parsed-form)
+            (log :before-handle-eval parsed-form)
             (let [res (<! (eval-parsed-form state out nrepl-eval-msg parsed-form))]
               (condp = res
-                ::killed      (recur [])
+                ::killed
+                (do
+                  (log :killed)
+                  (swap! last-eval-msg #(do % nrepl-eval-msg))
+                  (-->! out state {:type ::done ::nrepl-message nrepl-eval-msg})
+                  ::killed)
                 ::interrupted (recur [])
                 (recur xs))))
           (do
-            (prn :except parsed-form)
+            (log :except parsed-form)
             (-->! out state {:type ::read-exception
                              :exception (:exception parsed-form)
                              ::parsed-form parsed-form
@@ -197,32 +201,39 @@
   (close! eval-out)
   (close! interrupt-chan))
 
+(defn cljs-quit-msg? [{:keys [op code]}]
+  (and (= op "eval") (.endsWith (.trim code) ":cljs/quit")))
 
 (defn eval-handler [in {:keys [eval-out last-eval-msg interrupt-chan] :as state}]
   (let [out (chan)]
-    (go-loop []
-      (if-let [[v ch] (as/alts! [in eval-out interrupt-chan])]
-        (do
-          (condp = ch
-            in
-            (if (= (:op v) "eval")
-              (<! (handle-all-evals state out v))
-              (>! out v))
-            ;; lingering output from the repl normally print output we will associate it
-            ;; with the last message sent
-            ;; we add a sentinal flag below to help us reason about the behavior of the
-            ;; system during dev and test
-            eval-out
-            (process-latent-eval-out-message! state out v)
-            ;; when interupt comes here we are waiting for input and thus idly accepting
-            ;; new eval requests
-            interrupt-chan
-            (-->! out state {:type ::interrupt-response
-                             ::interrupt-status "session-idle"
-                             ::nrepl-message v}))
-          (recur))
-        ;; on close kill-signal!
-        (do (kill! state) (close! out))))
+    (go
+      (loop []
+        (let [[v ch] (as/alts! [in eval-out interrupt-chan])]
+          (cond
+            (nil? v) nil ;; quit
+            (and (= ch in) (cljs-quit-msg? v))
+            (let [[res ch] (as/alts! [(handle-all-evals state out v) (timeout 500)])] ;; forward the quit message
+              ;; but handle the case where we are already in a
+              ;; hung state
+              (-->! out state {:type ::done ::nrepl-message v}))
+            (and (= ch in) (= (:op v) "eval"))
+            (let [res (<! (handle-all-evals state out v))]
+              (when-not (= res ::killed)
+                (recur)))
+            :else
+            (do
+              (condp = ch
+                in (>! out v)
+                eval-out (process-latent-eval-out-message! state out v)
+                interrupt-chan
+                (-->! out state {:type ::interrupt-response
+                                 ::interrupt-status "session-idle"
+                                 ::nrepl-message v}))
+              (recur)))))
+      (<! (timeout 100))
+      (kill! state)
+      (close! out))
+
     out))
 
 (defn done? [sq]
@@ -254,25 +265,7 @@
   ([pred result-chan tmout]
    (as/into [] (async-take-upto pred done? result-chan (timeout tmout)))))
 
-#_ (<!! (get-result (let [ch (chan)]
-                (future (do
-                          (Thread/sleep 100)
-                          (as/onto-chan ch [{} {}
-                                            {:nashy.nrepl.eval/send [{:status "done"}]}
-                                            {} {}])))
-                
-                ch)
-              500))
-
-;; TODO
-;; tests for kill
-
-;; add options
-;; add options validation to thread-repl
-;; rename this fn
-;; perhaps take an in and return an out
-
-(defn evaluate-cljs-new [forward-handler repl-env-thunk]
+(defn evaluate-cljs-new [forward-handler repl-env-thunk options]
   (when-not repl-env-thunk
     (throw (ex-info "No REPL ENV provided" {})))
   (let [eval-out       (chan)
@@ -281,7 +274,7 @@
         state {:eval-out        eval-out
                :interrupt-chan  interrupt-chan
                :last-eval-msg   (atom {})
-               :thread-repl     (thread-cljs-repl repl-env-thunk #(put! eval-out %))
+               :thread-repl     (thread-cljs-repl repl-env-thunk options #(put! eval-out %))
                :forward-handler forward-handler}
         out   (-> in
                   (interrupt-handler state)
@@ -298,13 +291,28 @@
     {:input-chan in
      :interrupt-chan interrupt-chan}))
 
-;; development code
+(defn send-on-transport-msgs [{:keys [::nrepl-message] :as out-msg}]
+  (->> (::send out-msg)
+       (mapv (partial nrepl-misc/response-for nrepl-message))))
+
+(defn send-on-transport! [{:keys [::nrepl-message] :as out-msg}]
+  (when (and (::send out-msg) (:transport nrepl-message))
+    (log :send-on-transport (::send out-msg))
+    (->> (send-on-transport-msgs out-msg)
+         (mapv #(do (log :message-before-send %) %))
+         (mapv #(transport/send (:transport nrepl-message) %)))))
+
+(defn send-on-transport-handler [h]
+  (fn [out-msg]
+    (log :transport-handler (::send out-msg))
+    (if (::send out-msg)
+      (send-on-transport! out-msg)
+      (h out-msg))))
 
 (comment
-  
 
   (do ;; setup
-    (def sample-data {:id "91db8f85-06a9-431b-87e9-2f8fed2775cc",
+    (def sample-data {:id  "91db8f85-06a9-431b-87e9-2f8fed2775cc",
                       :session (atom {:id "964ef60f-2a44-468f-9807-a3585cd953a6"})
                       :transport :example})
     (def sample-data2 {:id "91db8f85-06a9-data2-87e9-2f8fed2775cc",
@@ -339,6 +347,7 @@
     (defn response [msg]
       (map send-on-transport-msgs (help* msg))))
 
+  
 
   
   (help (assoc sample-data2 :op "eval" :code "(+ 1 2)"))
@@ -357,90 +366,6 @@
   (response (assoc sample-data :op "eval" :code "(+ 1 2)"))
   
   )
-
-(defn send-on-transport-msgs [{:keys [::nrepl-message] :as out-msg}]
-  (->> (::send out-msg)
-       (mapv (partial nrepl-misc/response-for nrepl-message))))
-
-(defn send-on-transport! [{:keys [::nrepl-message] :as out-msg}]
-  (when (and (::send out-msg) (:transport nrepl-message))
-    (prn :send-on-transport (::send out-msg))
-    (->> (send-on-transport-msgs out-msg)
-         (mapv #(do (prn :message-before-send %) %))
-         (mapv #(transport/send (:transport nrepl-message) %)))))
-
-(defn send-on-transport-handler [h]
-  (fn [out-msg]
-    (prn :trasport-handler (::send out-msg))
-    (if (::send out-msg)
-      (send-on-transport! out-msg)
-      (h out-msg))))
-
-;; XXX possible temporary until we figure out the environment story
-(def ^:dynamic *cljs-evaluator* nil)
-
-(defn cljs-eval [h]
-  (fn [{:keys [op session interrupt-id id transport] :as msg}]
-    (condp = op
-      "eval"
-      (do
-        (when-not (contains? @session #'*cljs-evaluator*)
-          (prn :creating-evaluator)
-          (let [new-evaluator (-> h
-                                  send-on-transport-handler
-                                  (evaluate-cljs-new nash/repl-env))]
-            ;; on interupt we will need to clean up
-            (swap! session assoc #'*cljs-evaluator* new-evaluator))
-          (prn :finished-creating-evaluator))
-        (binding [*msg* msg] ;; <-- this is superstition
-          (if-let [evaluator (get @session #'*cljs-evaluator*)]
-            (put! (:input-chan evaluator) msg)
-            (h msg))))
-      "interrupt" ;; <-- this message should be able to take a "kill" param
-      (binding [*msg* msg] ;; <-- this is superstition
-        (when-let [evaluator (get @session #'*cljs-evaluator*)]
-          (prn :interrupt)
-          (put! (:interrupt-chan evaluator) msg)))
-      ;; we also need a notion of kill, our environments need to be
-      ;; killed and restarted. Creation and killing can be handled in a
-      ;; completely different middleware - cljs-environment middleware
-      ;; for example
-      ;; "kill-eval"
-      (h msg))))
-
-(mid/set-descriptor! #'cljs-eval
- {:requires #{"clone" "close" "ls-build-configs"}
-  :expects #{}
-  :handles {"eval"
-            {:doc "Evaluates code."
-             :requires {"code" "The code to be evaluated."
-                        "session" "The ID of the session within which to evaluate the code."}
-             :optional {"id" "An opaque message ID that will be included in responses related to the evaluation, and which may be used to restrict the scope of a later \"interrupt\" operation."
-                        "eval" "A fully-qualified symbol naming a var whose function value will be used to evaluate [code], instead of `clojure.core/eval` (the default)."
-                        "file" "The path to the file containing [code]. `clojure.core/*file*` will be bound to this."
-                        "line" "The line number in [file] at which [code] starts."
-                        "column" "The column number in [file] at which [code] starts."}
-             :returns {"ns" "*ns*, after successful evaluation of `code`."
-                       "values" "The result of evaluating `code`, often `read`able. This printing is provided by the `pr-values` middleware, and could theoretically be customized. Superseded by `ex` and `root-ex` if an exception occurs during evaluation."
-                       "ex" "The type of exception thrown, if any. If present, then `values` will be absent."
-                       "root-ex" "The type of the root exception thrown, if any. If present, then `values` will be absent."}
-             "interrupt"
-             {:doc "Attempts to interrupt some code evaluation."
-              :requires {"session" "The ID of the session used to start the evaluation to be interrupted."}
-              :optional {"interrupt-id" "The opaque message ID sent with the original \"eval\" request."}
-              :returns {"status" "'interrupted' if an evaluation was identified and interruption will be attempted
-'session-idle' if the session is not currently evaluating any code
-'interrupt-id-mismatch' if the session is currently evaluating code sent using a different ID than specified by the \"interrupt-id\" value "}}}}}
- )
-
-
-
-
-
-
-
-
-
 
 
 

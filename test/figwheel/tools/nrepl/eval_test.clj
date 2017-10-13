@@ -15,7 +15,7 @@
   (let [result (chan)
         evaluator
         (-> (fn [out-msg] (put! result out-msg))
-            (ne/evaluate-cljs-new nash/repl-env))]
+            (ne/evaluate-cljs-new nash/repl-env {}))]
     {:result result
      :evaluator evaluator}))
 

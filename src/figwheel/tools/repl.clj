@@ -6,9 +6,8 @@
    [figwheel.tools.repl.utils :as utils]
    [figwheel.tools.repl.io.appender-reader :refer [appender-reader] :as app-read]
    [figwheel.tools.repl.io.print-writer :refer [print-writer]]
-   [clojure.java.io :as io])
-  (:import
-   [figwheel.tools.repl.io ReaderHelper]))
+   [clojure.java.io :as io]
+   [clojure.main]))
 
 (defn handle-warnings-and-output-eval [out err warning-handler]
   (fn evaler*
@@ -21,12 +20,15 @@
                *err* err]
        (#'cljs.repl/eval-cljs repl-env env form opts)))))
 
-(defn thread-cljs-repl [repl-env-thunk handler]
+(defn thread-cljs-repl [repl-env-thunk options handler]
   (let [writer-reader (appender-reader)
         out (print-writer :out handler)
         err (print-writer :err handler)
         flush-out (fn [] (.flush err) (.flush out))
-        repl-env  (binding [*out* out *err* err] (repl-env-thunk))]
+        repl-env  (if (fn? repl-env-thunk)
+                    (binding [*out* out *err* err]
+                      (repl-env-thunk))
+                    repl-env-thunk)]
     {:repl-env repl-env
      :repl-thread
      (let [t (Thread.
@@ -38,34 +40,37 @@
                    ;; this is a thunk because certain repls like nashorn
                    ;; bind out and err on creation not setup
                    repl-env
-                   {:need-prompt (constantly false)
-                    :init (fn [])
-                    :prompt (fn [])
-                    :bind-err false
-                    :quit-prompt (fn [])
-                    :flush flush-out
-                    :eval (handle-warnings-and-output-eval out err
-                           (fn [repl-env form opts]
-                             (fn [warning-type env extra]
-                               (handler
-                                (merge
-                                 {:form form
-                                  :type ::eval-warning}
-                                 (utils/extract-warning-data warning-type env extra))))))
-                    :print
-                    (fn [result & rest]
-                      (flush-out)
-                      (handler {:type ::eval-value
-                                :value (or result "nil")
-                                :printed-value 1
-                                :ns cljs.analyzer/*cljs-ns*}))
-                    :caught
+                   (merge
+                    {:need-prompt (constantly false)
+                     :init (fn [])
+                     :prompt (fn [])
+                     :bind-err false
+                     :quit-prompt (fn [])
+                     :flush flush-out
+                     :eval (handle-warnings-and-output-eval
+                            out err
+                            (fn [repl-env form opts]
+                              (fn [warning-type env extra]
+                                (handler
+                                 (merge
+                                  {:form form
+                                   :type ::eval-warning}
+                                  (utils/extract-warning-data warning-type env extra))))))
+                     :print
+                     (fn [result & rest]
+                       (flush-out)
+                       (handler {:type ::eval-value
+                                 :value (or result "nil")
+                                 :printed-value 1
+                                 :ns cljs.analyzer/*cljs-ns*}))
+                     :caught
                     (fn [err repl-env repl-options]
                       (let [root-ex (#'clojure.main/root-cause err)]
                         (when-not (instance? ThreadDeath root-ex)
                           (handler {:type ::eval-error
-                                    :exception err}))))})
-                  (.close writer-reader))))]
+                                    :exception err}))))}
+                    options))
+                  (.close (:appender-reader writer-reader)))))]
        (.start t)
        t)
      :writer-reader writer-reader}))
@@ -95,7 +100,7 @@
 
 (defn kill-repl [thread-repl]
   ;; this will close the repl
-  (.close (:writer-reader thread-repl))
+  (.close (:appender-reader (:writer-reader thread-repl)))
   (.join (:repl-thread thread-repl) 2000)
   (.stop (:repl-thread thread-repl)))
 
