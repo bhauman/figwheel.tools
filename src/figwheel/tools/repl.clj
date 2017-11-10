@@ -7,7 +7,9 @@
    [figwheel.tools.repl.io.appender-reader :refer [appender-reader] :as app-read]
    [figwheel.tools.repl.io.print-writer :refer [print-writer]]
    [clojure.java.io :as io]
-   [clojure.main]))
+   [clojure.main])
+  (:import
+   [clojure.lang LineNumberingPushbackReader]))
 
 (defn handle-warnings-and-output-eval [out err warning-handler]
   (fn evaler*
@@ -21,7 +23,10 @@
        (#'cljs.repl/eval-cljs repl-env env form opts)))))
 
 (defn thread-cljs-repl [repl-env-thunk options handler]
-  (let [writer-reader (appender-reader)
+  (let [repl-eval-timeout (get :repl-eval-timeout options 30000)
+        options (dissoc options :repl-eval-timeout)
+        
+        writer-reader (appender-reader)
         out (print-writer :out handler)
         err (print-writer :err handler)
         flush-out (fn [] (.flush err) (.flush out))
@@ -29,12 +34,13 @@
                     (binding [*out* out *err* err]
                       (repl-env-thunk))
                     repl-env-thunk)]
-    {:repl-env repl-env
+    {:repl-eval-timeout repl-eval-timeout
+     :repl-env repl-env
      :repl-thread
      (let [t (Thread.
               (binding [*out* out
                         *err* err
-                        *in* (app-read/get-reader writer-reader)]
+                        *in* (LineNumberingPushbackReader. (app-read/get-reader writer-reader))]
                 (bound-fn []
                   (cljs.repl/repl*
                    ;; this is a thunk because certain repls like nashorn
@@ -88,11 +94,10 @@
     (loop []
       (cond
         ;; give up on timeout
-        (> (- (System/currentTimeMillis) start) 5000)
-        (throw (ex-info "Timed out writing to repl in" {}))
+        (> (- (System/currentTimeMillis) start) (get thread-repl :repl-eval-timeout 30000))
+        (throw (ex-info "Timed out writing for REPL to accept input" {}))
         (not (empty-read-input? thread-repl))
         (do
-          (println "waiting to eval " s)
           (Thread/sleep 100)
           (recur))
         :else
@@ -103,8 +108,6 @@
   (.close (:appender-reader (:writer-reader thread-repl)))
   (.join (:repl-thread thread-repl) 2000)
   (.stop (:repl-thread thread-repl)))
-
-
 
 (comment
   
