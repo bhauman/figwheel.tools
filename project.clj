@@ -17,20 +17,6 @@
 
   :source-paths ["src"]
 
-  :clean-targets ^{:protect false} ["resources/public/js/compiled" "target"]
-
-  :cljsbuild {:builds
-              [{:id "dev"
-                :source-paths ["src"]
-                :figwheel {:open-urls ["http://localhost:3449/index.html"]}
-
-                :compiler {:main example.core
-                           :asset-path "js/compiled/out"
-                           :output-to "resources/public/js/compiled/nashy.js"
-                           :output-dir "resources/public/js/compiled/out"
-                           :source-map-timestamp true
-                           :preloads [devtools.preload]}}]}
-
   :repl-options {:nrepl-middleware [figwheel.tools.nrepl/wrap-cljs-repl]}
 
   :profiles {:dev {:dependencies [[figwheel-sidecar "0.5.15-SNAPSHOT"]

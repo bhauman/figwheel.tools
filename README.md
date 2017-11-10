@@ -1,21 +1,21 @@
 # figwheel.tools
 
-Figwheel tools will eventually hold much of Figwheels functionality in
+Figwheel tools will eventually hold much of Figwheel's functionality in
 separate composable libraries, (i.e. compile, error/warning parsing etc.)
 
-Right now, it only holds the parts for `figwheel.tools.nrepl` which is a drop in
+For now, it only holds the support for `figwheel.tools.nrepl` which is a drop in
 replacement for [piggieback](https://github.com/cemerick/piggieback).
 
-`piggieback` has one known flaw, it recreates a new CLJS repl on each
-request. Creating a CLJS REPL is a particularly heavy operation
-involving at least the reloading of the analysis cache. This causes a
-noticable lag on each evaluation.
+`piggieback` has one known flaw, it instantiates a new ClojureScript
+REPL on every eval request. Creating a CLJS REPL is a particularly
+heavy operation involving at least the reloading of the analysis
+cache. This causes a noticeable lag on each evaluation.
 
 `figwheel.tools.nrepl` creates a single REPL on a thread and is much
 more responsive and lighter as a result. It also handles more of the nREPL
 protocol's features.
 
-For example it can handle mutiple forms
+For example it can handle multiple forms
 ```
 ;; Multiple forms are evaluated:
 => 1 2 (+ 1 2) 4
@@ -46,18 +46,17 @@ ClojureScript nREPL experience.
 Modify your project.clj to include the following :dependencies and :repl-options:
 
 ```
-:profiles {:dev {:dependencies [[figwheel.tools "0.1.0-SNAPSHOT"]
-                                [org.clojure/tools.nrepl "0.2.12"]]
+:profiles {:dev {:dependencies [[figwheel.tools "0.1.0-SNAPSHOT"]]
                  :repl-options {:nrepl-middleware [figwheel.tools.nrepl/wrap-cljs-repl]}}}
 ```
 
-In you nREPL environment you can now start a CLJS REPL
+In your nREPL environment you can now start a CLJS REPL
 
 
 ```
 $ lein repl
 ....
-user=> (figwheel.tools.nrepl/cljs-repl (cljs.repl.rhino/repl-env))
+user=> (figwheel.tools.nrepl/cljs-repl (cljs.repl.nashorn/repl-env))
 To quit, type: :cljs/quit
 nil
 cljs.user=> (defn <3 [a b] (str a " <3 " b "!"))
