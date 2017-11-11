@@ -102,12 +102,12 @@
   (go-loop []
     (let [[eval-out-msg ch] (as/alts! [(if @*simulate-blocking-eval
                                             (chan)
-                                            eval-out) 
+                                            eval-out)
                                        interrupt-chan])]
       (log :running eval-out-msg)
       (if eval-out-msg
         (condp = ch
-          
+
           eval-out
           (do
             (-->! out state
@@ -116,7 +116,7 @@
                          ::nrepl-message nrepl-eval-msg))
             (when-not (#{:figwheel.tools.repl/eval-value :figwheel.tools.repl/eval-error} (:type eval-out-msg))
               (recur)))
-          
+
           interrupt-chan
           (let [int-status (interrupt-status eval-out-msg nrepl-eval-msg)]
             (-->! out state
@@ -135,7 +135,7 @@
     (go-loop [res []]
         (let [[v ch] (as/alts! [eval-out tmout])]
           (if (or (nil? v) (= tmout ch))
-            res 
+            res
             (recur (conj res v)))))))
 
 (defn process-latent-eval-out-message! [{:keys [last-eval-msg] :as state} out msg]
@@ -263,10 +263,11 @@
   (let [eval-out       (chan)
         in             (chan)
         interrupt-chan (chan)
+        thread-repl    (thread-cljs-repl repl-env-thunk options #(put! eval-out %))
         state {:eval-out        eval-out
                :interrupt-chan  interrupt-chan
                :last-eval-msg   (atom {})
-               :thread-repl     (thread-cljs-repl repl-env-thunk options #(put! eval-out %))
+               :thread-repl     thread-repl
                :forward-handler forward-handler}
         out   (-> in
                   (interrupt-handler state)
@@ -281,6 +282,7 @@
         ;; this is just a take-all for now
         _out_loop (as/reduce (fn [state msg] (forward-handler msg) state) state out)]
     {:input-chan in
+     :thread-repl thread-repl
      :interrupt-chan interrupt-chan}))
 
 (defn send-on-transport-msgs [{:keys [::nrepl-message] :as out-msg}]
@@ -318,49 +320,43 @@
     (defn kill []
       (when (:input-chan @#'evaluator)
         (close! (:input-chan @#'evaluator))))
-    
+
     (when evaluator (kill))
-    
+
     (def res (atom []))
     (def evaluator (time
                     (-> (fn [out-msg] (swap! res conj out-msg))
                        (evaluate-cljs-new nash/repl-env))))
 
-    
+
     (defn help* [msg]
       (reset! @#'res [])
       (put! (:input-chan @#'evaluator) msg)
       (Thread/sleep 200)
       @res)
-    
+
     (defn help [msg]
       (map ::send (help* msg)))
-    
+
     (defn response [msg]
       (map send-on-transport-msgs (help* msg))))
 
-  
 
-  
+
+
   (help (assoc sample-data2 :op "eval" :code "(+ 1 2)"))
 
-  
+
   (reset! *simulate-blocking-eval true)
   (help* (assoc sample-mark :op "interrupt" :interrupt-id "asdf"))
-  
+
   (help (assoc sample-data :op "eval" :code "(+ 1 4) (prn 7) 1"))
-  (help (assoc sample-data :op "eval" :code "(+ 1 4) 
+  (help (assoc sample-data :op "eval" :code "(+ 1 4)
 
       a ) (prn 7) 1"))
 
   (help (assoc sample-data :op "eval" :code "(defn)"))
 
   (response (assoc sample-data :op "eval" :code "(+ 1 2)"))
-  
+
   )
-
-
-
-
-
-

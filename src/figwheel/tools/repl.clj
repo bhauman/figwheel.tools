@@ -2,6 +2,7 @@
   (:require
    [cljs.analyzer]
    [cljs.repl]
+   [cljs.env]
    [cljs.repl.nashorn :as nash]
    [figwheel.tools.repl.utils :as utils]
    [figwheel.tools.repl.io.appender-reader :refer [appender-reader] :as app-read]
@@ -25,7 +26,7 @@
 (defn thread-cljs-repl [repl-env-thunk options handler]
   (let [repl-eval-timeout (get :repl-eval-timeout options 30000)
         options (dissoc options :repl-eval-timeout)
-        
+
         writer-reader (appender-reader)
         out (print-writer :out handler)
         err (print-writer :err handler)
@@ -33,8 +34,13 @@
         repl-env  (if (fn? repl-env-thunk)
                     (binding [*out* out *err* err]
                       (repl-env-thunk))
-                    repl-env-thunk)]
+                    repl-env-thunk)
+        ;; as there is no official protocal to obtain a compiler-env
+        ;; from a repl-env we have to use a hack to get it
+        ;; see the print handler below
+        cljs-compiler-env (atom nil)]
     {:repl-eval-timeout repl-eval-timeout
+     :cljs-compiler-env cljs-compiler-env
      :repl-env repl-env
      :repl-thread
      (let [t (Thread.
@@ -64,6 +70,9 @@
                                   (utils/extract-warning-data warning-type env extra))))))
                      :print
                      (fn [result & rest]
+                       ;; capture the compiler env
+                       (when-not @cljs-compiler-env
+                         (reset! cljs-compiler-env cljs.env/*compiler*))
                        (flush-out)
                        (handler {:type ::eval-value
                                  :value (or result "nil")
@@ -110,18 +119,18 @@
   (.stop (:repl-thread thread-repl)))
 
 (comment
-  
+
   (prn (.state (:writer-reader repler)))
-  
+
   (f/start-figwheel!)
   (f/stop-figwheel!)
 
   (def output (atom []))
 
-  
+
   (def repler (thread-cljs-repl f/repl-env
                                 #(swap! output conj %)))
-  
+
   (def repler (thread-cljs-repl nash/repl-env
                                 #(swap! output conj %)))
 

@@ -12,6 +12,14 @@
 (def ^:dynamic *cljs-evaluator* nil)
 (def ^:dynamic *original-ns* nil)
 
+(defn grab-cljs-env [msg]
+  (some-> msg
+          :session
+          deref
+          (get-in [#'*cljs-evaluator* :thread-repl :cljs-compiler-env])
+          deref
+          deref))
+
 (defn cljs-repl* [repl-env options]
   (try
     (log :creating-evaluator)
@@ -22,6 +30,9 @@
       (set! *cljs-evaluator* new-evaluator)
       (set! *original-ns* *ns*)
       (set! *ns* (find-ns ana/*cljs-ns*)))
+    ;; OMG this sucks, but its the only way to make cider work for now
+    (when-let [v (resolve 'cider.nrepl.middleware.util.cljs/grab-cljs-env)]
+      (alter-var-root v (fn [_] grab-cljs-env)))
     (log :finished-creating-evaluator)
     (println "To quit, type:" :cljs/quit)
     (catch Exception e
@@ -35,7 +46,7 @@
 (defn wrap-cljs-repl [h]
   (fn [{:keys [op session interrupt-id id transport] :as msg}]
     (if-let [evaluator (get @session #'*cljs-evaluator*)]
-      (do 
+      (do
         (when (ne/cljs-quit-msg? msg)
           (let [orig-ns (@session #'*original-ns*)]
             (swap! session assoc
@@ -101,4 +112,3 @@
       ;; for example
       ;; "kill-eval"
       (h msg))))
-

@@ -8,12 +8,16 @@ replacement for [piggieback](https://github.com/cemerick/piggieback).
 
 `piggieback` has one known flaw, it instantiates a new ClojureScript
 REPL on every eval request. Creating a CLJS REPL is a particularly
-heavy operation involving at least the reloading of the analysis
-cache. This causes a noticeable lag on each evaluation.
+heavy operation. It involves, at the very least, the reloading of the
+analysis cache and this causes a noticeable lag on each evaluation. In
+my experience the lag is close to 2 seconds.
 
-`figwheel.tools.nrepl` creates a single REPL on a thread and is much
+`figwheel.tools.nrepl` creates a single CLJS REPL on a thread and is much
 more responsive and lighter as a result. It also handles more of the nREPL
 protocol's features.
+
+`figwheel.tools.nrepl` provides an instantaneous response to forms
+submitted for evaluation.
 
 For example it can handle multiple forms
 ```
