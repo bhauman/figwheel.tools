@@ -39,7 +39,15 @@
       (set! *cljs-evaluator* nil)
       (throw e))))
 
-(defn cljs-repl [repl-env & {:as options}]
+(defn cljs-repl
+  "Starts a ClojureScript REPL over nREPL session.
+
+The `figwheel.tools.nrepl/wrap-cljs-repl` middleware must be installed
+in the middleware chain for this operation to take effect.
+
+This takes all the same args as `cljs.repl/repl`"
+
+  [repl-env & {:as options}]
   (cljs-repl* repl-env options))
 
 ;; middleware
